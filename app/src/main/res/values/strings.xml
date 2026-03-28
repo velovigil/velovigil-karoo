@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">veloVigil</string>
+    <string name="fleet_status_label">Fleet Status</string>
+    <string name="hrv_rmssd_label">HRV (RMSSD)</string>
+</resources>
