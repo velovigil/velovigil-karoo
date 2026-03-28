@@ -29,12 +29,17 @@ class PolarConnector(
     }
 
     private val api: PolarBleApi = PolarBleApiDefaultImpl.defaultImplementation(
-        context,
+        context.applicationContext,
         setOf(
             PolarBleApi.PolarBleSdkFeature.FEATURE_HR,
             PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_DEVICE_INFO,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO,
         )
-    )
+    ).also {
+        it.setApiLogger { msg -> Log.d(TAG, "SDK: $msg") }
+        Log.i(TAG, "Polar SDK initialized with applicationContext")
+    }
 
     private val disposables = CompositeDisposable()
     private var connectedDeviceId: String? = null
@@ -45,6 +50,10 @@ class PolarConnector(
         api.setApiCallback(object : PolarBleApiCallback() {
             override fun blePowerStateChanged(powered: Boolean) {
                 Log.i(TAG, "BLE power: $powered")
+            }
+
+            override fun deviceConnecting(polarDeviceInfo: PolarDeviceInfo) {
+                Log.i(TAG, "H10 connecting: ${polarDeviceInfo.deviceId}")
             }
 
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
@@ -104,11 +113,19 @@ class PolarConnector(
             Log.i(TAG, "Connecting to H10: $deviceId")
             api.connectToDevice(deviceId)
         } else {
-            Log.i(TAG, "Searching for Polar H10...")
-            val disposable = api.autoConnectToDevice(-50, "H10", null)
+            // Search for any nearby Polar device via BLE scan
+            Log.i(TAG, "Scanning for Polar devices...")
+            val disposable = api.searchForDevice()
                 .subscribe(
-                    { Log.i(TAG, "Auto-connect initiated") },
-                    { e -> Log.e(TAG, "Auto-connect failed: ${e.message}") },
+                    { deviceInfo ->
+                        Log.i(TAG, "Found Polar device: id=${deviceInfo.deviceId} name=${deviceInfo.name} addr=${deviceInfo.address} rssi=${deviceInfo.rssi}")
+                        if (deviceInfo.name.contains("H10", ignoreCase = true) && connectedDeviceId == null) {
+                            connectedDeviceId = deviceInfo.deviceId // Prevent duplicate connects
+                            Log.i(TAG, "Connecting to H10: ${deviceInfo.deviceId} (MAC: ${deviceInfo.address})")
+                            api.connectToDevice(deviceInfo.deviceId)
+                        }
+                    },
+                    { e -> Log.e(TAG, "Device search failed: ${e.message}") },
                 )
             disposables.add(disposable)
         }
