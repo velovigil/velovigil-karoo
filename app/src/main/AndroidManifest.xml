@@ -17,11 +17,13 @@
         <!-- veloVigil Extension Service -->
         <service
             android:name=".VeloVigilExtension"
-            android:exported="true"
-            android:foregroundServiceType="specialUse">
+            android:exported="true">
             <intent-filter>
                 <action android:name="io.hammerhead.karooext.KAROO_EXTENSION" />
             </intent-filter>
+            <meta-data
+                android:name="io.hammerhead.karooext.EXTENSION_INFO"
+                android:resource="@xml/extension_info" />
         </service>
 
         <!-- Settings Activity -->
@@ -37,7 +39,7 @@
 
         <!-- Manifest URL for Karoo app store -->
         <meta-data
-            android:name="io.hammerhead.karooext.manifest_url"
+            android:name="io.hammerhead.karooext.MANIFEST_URL"
             android:value="https://raw.githubusercontent.com/velovigil/velovigil-karoo/main/manifest.json" />
 
     </application>

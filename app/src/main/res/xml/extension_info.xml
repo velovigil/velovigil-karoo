@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExtensionInfo
+    displayName="@string/extension_name"
+    icon="@drawable/ic_velovigil"
+    id="velovigil"
+    scansDevices="false">
+    <DataType
+        description="Live ride state and heart rate"
+        displayName="Fleet Status"
+        graphical="false"
+        icon="@drawable/ic_velovigil"
+        typeId="fleet_status" />
+</ExtensionInfo>

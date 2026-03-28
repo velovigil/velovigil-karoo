@@ -20,6 +20,12 @@ dependencyResolutionManagement {
                 password = providers.gradleProperty("gpr.key").orNull
                     ?: System.getenv("GITHUB_TOKEN") ?: ""
             }
+            content {
+                includeGroup("io.hammerhead")
+            }
+        }
+        maven {
+            url = uri("https://jitpack.io")
         }
     }
 }

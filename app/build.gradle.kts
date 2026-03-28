@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.velovigil.karoo"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -51,4 +51,11 @@ dependencies {
 
     // JSON
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    // Polar BLE SDK — direct H10 connection for RR intervals, accelerometer, ECG
+    implementation("com.github.polarofficial:polar-ble-sdk:5.5.0")
+
+    // RxJava — required by Polar SDK
+    implementation("io.reactivex.rxjava3:rxjava:3.1.8")
+    implementation("io.reactivex.rxjava3:rxandroid:3.0.2")
 }
