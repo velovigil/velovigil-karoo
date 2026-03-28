@@ -46,6 +46,11 @@ class PolarConnector(
     @Volatile var isConnected: Boolean = false
     @Volatile var h10Battery: Int = -1
 
+    // Callbacks for device event bridge (set by VeloVigilExtension.connectDevice)
+    var onHRUpdate: ((Int) -> Unit)? = null
+    var onConnected: (() -> Unit)? = null
+    var onDisconnected: (() -> Unit)? = null
+
     fun connect(deviceId: String? = null) {
         api.setApiCallback(object : PolarBleApiCallback() {
             override fun blePowerStateChanged(powered: Boolean) {
@@ -60,12 +65,14 @@ class PolarConnector(
                 Log.i(TAG, "H10 connected: ${polarDeviceInfo.deviceId}")
                 connectedDeviceId = polarDeviceInfo.deviceId
                 isConnected = true
+                onConnected?.invoke()
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
                 Log.w(TAG, "H10 disconnected: ${polarDeviceInfo.deviceId}")
                 isConnected = false
                 disposables.clear()
+                onDisconnected?.invoke()
             }
 
             override fun bleSdkFeatureReady(
@@ -89,6 +96,7 @@ class PolarConnector(
                 data: PolarHrData.PolarHrSample,
             ) {
                 telemetry.heartRate = data.hr
+                onHRUpdate?.invoke(data.hr)
 
                 if (data.rrAvailable) {
                     for (rr in data.rrsMs) {
@@ -138,6 +146,7 @@ class PolarConnector(
                 { hrData ->
                     for (sample in hrData.samples) {
                         telemetry.heartRate = sample.hr
+                        onHRUpdate?.invoke(sample.hr)
                         if (sample.rrAvailable) {
                             for (rr in sample.rrsMs) {
                                 hrv.addRR(rr)

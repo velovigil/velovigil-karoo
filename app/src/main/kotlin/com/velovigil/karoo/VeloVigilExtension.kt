@@ -7,18 +7,21 @@ import io.hammerhead.karooext.internal.Emitter
 import io.hammerhead.karooext.internal.ViewEmitter
 import io.hammerhead.karooext.KarooSystemService
 import io.hammerhead.karooext.models.*
+import kotlinx.coroutines.*
 
 /**
- * veloVigil Karoo Extension — Phase 2
+ * veloVigil Karoo Extension — Phase 3: Virtual HR Sensor
  *
- * Subscribes to Karoo data streams (HR, speed, power, cadence).
- * Buffers telemetry and POSTs to Fleet backend every 5 seconds.
- * Displays live status on Karoo data field.
+ * Registers as a Karoo sensor device (scansDevices=true).
+ * Connects to Polar H10 via BLE for HR, RR intervals (HRV), and accelerometer.
+ * Provides HR back to Karoo as a native sensor source.
+ * Also subscribes to Karoo data streams (speed, power, cadence) for telemetry.
  */
 class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME) {
 
     companion object {
         private const val TAG = "veloVigil"
+        private const val POLAR_HR_DEVICE_UID = "velovigil-polar-hr"
         var instance: VeloVigilExtension? = null
     }
 
@@ -28,11 +31,91 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
     val gforce = GForceProcessor()
     var polar: PolarConnector? = null
     private val consumerIds = mutableListOf<String>()
+    private var deviceEmitter: Emitter<DeviceEvent>? = null
+    private var deviceStreamJob: Job? = null
+    private val deviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override val types by lazy {
         listOf(
             FleetStatusDataType(extension),
         )
+    }
+
+    /**
+     * Called when user opens Sensor Scan on Karoo.
+     * Emits a virtual HR sensor device that the user can pair.
+     */
+    override fun startScan(emitter: Emitter<Device>) {
+        Log.i(TAG, "Sensor scan started — emitting Polar HR device")
+        val job = deviceScope.launch {
+            delay(1000) // Brief scan simulation
+            emitter.onNext(
+                Device(
+                    extension,
+                    POLAR_HR_DEVICE_UID,
+                    listOf(DataType.Source.HEART_RATE),
+                    "veloVigil HR (Polar H10)",
+                )
+            )
+        }
+        emitter.setCancellable { job.cancel() }
+    }
+
+    /**
+     * Called when user selects "veloVigil HR (Polar H10)" in Sensor Scan.
+     * Connects to the actual Polar H10 via BLE and streams HR to Karoo.
+     */
+    override fun connectDevice(uid: String, emitter: Emitter<DeviceEvent>) {
+        Log.i(TAG, "connectDevice: uid=$uid")
+        if (uid != POLAR_HR_DEVICE_UID) {
+            Log.w(TAG, "Unknown device UID: $uid")
+            return
+        }
+
+        deviceEmitter = emitter
+
+        // Signal searching state
+        emitter.onNext(OnConnectionStatus(ConnectionStatus.SEARCHING))
+
+        // Connect to Polar H10 via BLE
+        if (polar == null) {
+            polar = PolarConnector(this, hrv, gforce, telemetry)
+        }
+        polar?.onHRUpdate = { hr ->
+            // Push HR to Karoo as native sensor data
+            emitter.onNext(
+                OnDataPoint(
+                    DataPoint(
+                        DataType.Source.HEART_RATE,
+                        mapOf(DataType.Field.HEART_RATE to hr.toDouble()),
+                        POLAR_HR_DEVICE_UID,
+                    )
+                )
+            )
+        }
+        polar?.onConnected = {
+            Log.i(TAG, "Polar H10 connected — signaling Karoo")
+            emitter.onNext(OnConnectionStatus(ConnectionStatus.CONNECTED))
+            emitter.onNext(OnBatteryStatus(BatteryStatus.GOOD))
+            emitter.onNext(
+                OnManufacturerInfo(
+                    ManufacturerInfo("Polar", "H10", "veloVigil BLE Bridge")
+                )
+            )
+        }
+        polar?.onDisconnected = {
+            Log.w(TAG, "Polar H10 disconnected — signaling Karoo")
+            emitter.onNext(OnConnectionStatus(ConnectionStatus.DISCONNECTED))
+        }
+        polar?.connect()
+
+        emitter.setCancellable {
+            Log.i(TAG, "Device connection cancelled by Karoo")
+            deviceEmitter = null
+            polar?.onHRUpdate = null
+            polar?.onConnected = null
+            polar?.onDisconnected = null
+        }
     }
 
     override fun onCreate() {
@@ -46,10 +129,6 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
                 Log.i(TAG, "Connected to Karoo system")
                 subscribeToData()
                 telemetry.start()
-
-                // Connect to Polar H10 for RR intervals + accelerometer
-                polar = PolarConnector(this@VeloVigilExtension, hrv, gforce, telemetry)
-                polar?.connect() // Auto-search for H10
             } else {
                 Log.w(TAG, "Failed to connect to Karoo system")
             }
@@ -58,6 +137,7 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
 
     override fun onDestroy() {
         Log.i(TAG, "veloVigil stopping")
+        deviceScope.cancel()
         polar?.disconnect()
         telemetry.stop()
         consumerIds.forEach { karooSystem.removeConsumer(it) }
@@ -68,9 +148,8 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
     }
 
     private fun subscribeToData() {
-        // Subscribe to each data type individually
+        // Subscribe to non-HR data types (HR now comes from our Polar BLE connection)
         val dataTypes = listOf(
-            DataType.Type.HEART_RATE,
             DataType.Type.SPEED,
             DataType.Type.POWER,
             DataType.Type.CADENCE,
@@ -87,7 +166,7 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
             }
             consumerIds.add(id)
         }
-        Log.i(TAG, "Subscribed to ${dataTypes.size} Karoo data streams")
+        Log.i(TAG, "Subscribed to ${dataTypes.size} Karoo data streams (HR via Polar BLE)")
     }
 
     private fun handleStreamState(type: String, state: StreamState) {
@@ -98,7 +177,6 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
                 Log.d(TAG, "Stream $type: value=$value")
                 value?.let {
                     when (type) {
-                        DataType.Type.HEART_RATE -> { telemetry.heartRate = it.toInt(); Log.i(TAG, "HR: ${it.toInt()}") }
                         DataType.Type.SPEED -> telemetry.speed = it
                         DataType.Type.POWER -> telemetry.power = it.toInt()
                         DataType.Type.CADENCE -> telemetry.cadence = it.toInt()

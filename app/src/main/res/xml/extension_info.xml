@@ -3,7 +3,7 @@
     displayName="@string/extension_name"
     icon="@drawable/ic_velovigil"
     id="velovigil"
-    scansDevices="false">
+    scansDevices="true">
     <DataType
         description="Live ride state and heart rate"
         displayName="Fleet Status"
