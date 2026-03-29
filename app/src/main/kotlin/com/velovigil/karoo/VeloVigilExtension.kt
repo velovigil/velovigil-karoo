@@ -1,5 +1,6 @@
 package com.velovigil.karoo
 
+import android.content.Context
 import android.util.Log
 import io.hammerhead.karooext.extension.KarooExtension
 import io.hammerhead.karooext.extension.DataTypeImpl
@@ -26,7 +27,7 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
     }
 
     lateinit var karooSystem: KarooSystemService
-    val telemetry = TelemetryBuffer()
+    lateinit var telemetry: TelemetryBuffer
     val hrv = HRVProcessor()
     val gforce = GForceProcessor()
     var polar: PolarConnector? = null
@@ -122,6 +123,23 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
         super.onCreate()
         instance = this
         Log.i(TAG, "veloVigil v${BuildConfig.VERSION_NAME} starting")
+
+        // Load settings from SharedPreferences
+        val prefs = getSharedPreferences(SettingsActivity.PREFS_NAME, Context.MODE_PRIVATE)
+        val endpoint = prefs.getString(SettingsActivity.KEY_FLEET_ENDPOINT, SettingsActivity.DEFAULT_ENDPOINT)
+            ?: SettingsActivity.DEFAULT_ENDPOINT
+        val riderKey = prefs.getString(SettingsActivity.KEY_RIDER_KEY, "") ?: ""
+        val riderId = prefs.getString(SettingsActivity.KEY_RIDER_ID, "robert_chuvala") ?: "robert_chuvala"
+
+        if (riderKey.isEmpty()) {
+            Log.w(TAG, "No rider API key configured — telemetry will get 401 until registered via Settings")
+        }
+
+        telemetry = TelemetryBuffer(
+            endpoint = endpoint,
+            deviceKey = riderKey.ifEmpty { "vv_rider_jwo9xh4oaw8lnuwihqgu5ttsyyj24834" },
+            riderId = riderId,
+        )
 
         karooSystem = KarooSystemService(this)
         karooSystem.connect { connected ->

@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class TelemetryBuffer(
     private val endpoint: String = "https://velovigil-fleet.robert-chuvala.workers.dev/api/v1/telemetry",
     private val deviceKey: String = "vv_rider_jwo9xh4oaw8lnuwihqgu5ttsyyj24834",
+    private val riderId: String = "robert_chuvala",
     private val intervalMs: Long = 5000,
 ) {
     companion object {
@@ -90,7 +91,7 @@ class TelemetryBuffer(
         val effectiveHR = if (heartRate > 0) heartRate
             else if (meanRR > 0) (60000.0 / meanRR).toInt()
             else 0
-        return """{"device_id":"karoo2","rider_id":"robert_chuvala","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$effectiveHR,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs}}"""
+        return """{"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$effectiveHR,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs}}"""
     }
 
     private suspend fun flush() {
