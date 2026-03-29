@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 class TelemetryBuffer(
     private val endpoint: String = "https://velovigil-fleet.robert-chuvala.workers.dev/api/v1/telemetry",
+    private val deviceKey: String = "REDACTED_KEY",
     private val intervalMs: Long = 5000,
 ) {
     companion object {
@@ -110,6 +111,7 @@ class TelemetryBuffer(
         return try {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("X-Device-Key", deviceKey)
             conn.doOutput = true
             conn.connectTimeout = 5000
             conn.readTimeout = 5000
