@@ -83,9 +83,14 @@ class TelemetryBuffer(
         Log.i(TAG, "Telemetry upload loop stopped (${buffer.size} buffered)")
     }
 
+    // "Half of life is just showing up." — Henry Rollins
     private fun buildPayload(): String {
         val ts = dateFormat.format(Date())
-        return """{"device_id":"karoo2","rider_id":"robert_chuvala","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$heartRate,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs}}"""
+        // Fallback: if HR is 0 but we have valid RR intervals, derive HR from meanRR
+        val effectiveHR = if (heartRate > 0) heartRate
+            else if (meanRR > 0) (60000.0 / meanRR).toInt()
+            else 0
+        return """{"device_id":"karoo2","rider_id":"robert_chuvala","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$effectiveHR,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs}}"""
     }
 
     private suspend fun flush() {
