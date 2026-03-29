@@ -96,7 +96,7 @@ class SettingsActivity : Activity() {
 
         layout.addView(spacer(16))
 
-        // API key
+        // API key (masked for security)
         layout.addView(label("API Key"))
         apiKeyInput = EditText(this).apply {
             setText(currentKey)
@@ -104,6 +104,7 @@ class SettingsActivity : Activity() {
             textSize = 14f
             setSingleLine(true)
             setPadding(16, 16, 16, 16)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         layout.addView(apiKeyInput)
 
@@ -169,10 +170,16 @@ class SettingsActivity : Activity() {
         super.onDestroy()
     }
 
+    // "No dress rehearsal, this is our life." — Gord Downie
     private fun doSave() {
+        val endpoint = endpointInput.text.toString().trim()
+        if (!endpoint.startsWith("https://")) {
+            setStatus("Error: Endpoint must use HTTPS")
+            return
+        }
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
-            .putString(KEY_FLEET_ENDPOINT, endpointInput.text.toString().trim())
+            .putString(KEY_FLEET_ENDPOINT, endpoint)
             .putString(KEY_RIDER_KEY, apiKeyInput.text.toString().trim())
             .apply()
 
