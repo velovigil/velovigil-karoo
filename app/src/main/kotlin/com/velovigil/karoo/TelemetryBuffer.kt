@@ -14,8 +14,8 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 class TelemetryBuffer(
     private val endpoint: String = "https://velovigil-fleet.robert-chuvala.workers.dev/api/v1/telemetry",
-    private val deviceKey: String = "REDACTED_KEY",
-    private val riderId: String = "robert_chuvala",
+    private val deviceKey: String = "",
+    private val riderId: String = "unregistered",
     private val intervalMs: Long = 5000,
 ) {
     companion object {

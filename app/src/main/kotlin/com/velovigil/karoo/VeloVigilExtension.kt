@@ -129,7 +129,7 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
         val endpoint = prefs.getString(SettingsActivity.KEY_FLEET_ENDPOINT, SettingsActivity.DEFAULT_ENDPOINT)
             ?: SettingsActivity.DEFAULT_ENDPOINT
         val riderKey = prefs.getString(SettingsActivity.KEY_RIDER_KEY, "") ?: ""
-        val riderId = prefs.getString(SettingsActivity.KEY_RIDER_ID, "robert_chuvala") ?: "robert_chuvala"
+        val riderId = prefs.getString(SettingsActivity.KEY_RIDER_ID, "unregistered") ?: "unregistered"
 
         if (riderKey.isEmpty()) {
             Log.w(TAG, "No rider API key configured — telemetry will get 401 until registered via Settings")
@@ -137,7 +137,7 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
 
         telemetry = TelemetryBuffer(
             endpoint = endpoint,
-            deviceKey = riderKey.ifEmpty { "REDACTED_KEY" },
+            deviceKey = riderKey, // Must register via Settings first
             riderId = riderId,
         )
 

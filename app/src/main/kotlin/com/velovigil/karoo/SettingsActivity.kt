@@ -229,9 +229,9 @@ class SettingsActivity : Activity() {
                         Log.i(TAG, "Registration successful: rider_id=$riderId")
                     } else {
                         runOnUiThread {
-                            setStatus("Registration response missing rider_id or api_key: $response")
+                            setStatus("Registration response missing expected fields")
                         }
-                        Log.w(TAG, "Unexpected registration response: $response")
+                        Log.w(TAG, "Unexpected registration response format (redacted)")
                     }
                 } else {
                     val errorBody = try { conn.errorStream?.bufferedReader()?.readText() ?: "" } catch (_: Exception) { "" }
