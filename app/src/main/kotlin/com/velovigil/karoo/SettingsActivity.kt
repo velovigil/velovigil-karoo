@@ -328,7 +328,7 @@ class SettingsActivity : Activity() {
                 // Send a minimal test payload
                 val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 val riderId = prefs.getString(KEY_RIDER_ID, "test") ?: "test"
-                val testPayload = """{"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())}","ride_state":"TEST","elapsed_seconds":0,"gps":{"lat":0,"lon":0},"speed_ms":0,"cadence_rpm":0,"power_watts":0,"altitude_m":0,"grade_pct":0,"distance_m":0,"hr_bpm":0,"hrv":{"rmssd":0,"sdnn":0,"pnn50":0,"mean_rr_ms":0},"gforce":{"current":1.0,"peak":0,"lateral":0,"airborne":false,"hang_time_ms":0}}"""
+                val testPayload = """{"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())}","ride_state":"IDLE","elapsed_seconds":0,"gps":{"lat":0,"lon":0},"speed_ms":0,"cadence_rpm":0,"power_watts":0,"altitude_m":0,"grade_pct":0,"distance_m":0,"hr_bpm":0,"hrv":{"rmssd":0,"sdnn":0,"pnn50":0,"mean_rr_ms":0},"gforce":{"current":1.0,"peak":0,"lateral":0,"airborne":false,"hang_time_ms":0}}"""
                 conn.outputStream.use { it.write(testPayload.toByteArray()) }
 
                 val code = conn.responseCode
