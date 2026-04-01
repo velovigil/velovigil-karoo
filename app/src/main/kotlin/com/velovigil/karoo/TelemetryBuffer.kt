@@ -56,6 +56,11 @@ class TelemetryBuffer(
     @Volatile var isAirborne: Boolean = false
     @Volatile var hangTimeMs: Long = 0
 
+    // Status reporting (for Settings UI)
+    @Volatile var lastFlushStatus: String = "No uploads yet"
+    @Volatile var totalSent: Int = 0
+    @Volatile var totalFailed: Int = 0
+
     fun start() {
         uploadJob = scope.launch {
             Log.i(TAG, "Telemetry upload loop started (${intervalMs}ms interval)")
@@ -95,24 +100,43 @@ class TelemetryBuffer(
     }
 
     private suspend fun flush() {
+        if (deviceKey.isEmpty()) {
+            lastFlushStatus = "ERROR: No API key — register in Settings"
+            Log.w(TAG, "Skipping flush: no API key configured")
+            return
+        }
+
+        var sentThisBatch = 0
         while (buffer.isNotEmpty()) {
             val payload = buffer.peek() ?: break
             try {
-                val success = post(payload)
-                if (success) {
+                val result = post(payload)
+                if (result.success) {
                     buffer.poll()
+                    sentThisBatch++
+                    totalSent++
                 } else {
-                    Log.w(TAG, "POST failed, keeping ${buffer.size} in buffer")
+                    totalFailed++
+                    lastFlushStatus = "FAIL: HTTP ${result.code} — ${result.message} (${buffer.size} buffered)"
+                    Log.w(TAG, "POST failed: ${result.code} ${result.message}, keeping ${buffer.size} in buffer")
                     break
                 }
             } catch (e: Exception) {
+                totalFailed++
+                lastFlushStatus = "ERROR: ${e.message} (${buffer.size} buffered)"
                 Log.w(TAG, "Network error, keeping ${buffer.size} in buffer: ${e.message}")
                 break
             }
         }
+        if (sentThisBatch > 0) {
+            val now = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+            lastFlushStatus = "OK at $now ($totalSent sent, ${buffer.size} buffered)"
+        }
     }
 
-    private fun post(payload: String): Boolean {
+    private data class PostResult(val success: Boolean, val code: Int = 0, val message: String = "")
+
+    private fun post(payload: String): PostResult {
         val conn = URL(endpoint).openConnection() as HttpURLConnection
         return try {
             conn.requestMethod = "POST"
@@ -125,14 +149,20 @@ class TelemetryBuffer(
             val code = conn.responseCode
             if (code in 200..299) {
                 Log.d(TAG, "POST OK ($code)")
-                true
+                PostResult(true, code)
             } else {
-                Log.w(TAG, "POST failed: $code")
-                false
+                val msg = when (code) {
+                    401 -> "Invalid API key"
+                    403 -> "Forbidden"
+                    429 -> "Rate limited"
+                    else -> "Server error"
+                }
+                Log.w(TAG, "POST failed: $code $msg")
+                PostResult(false, code, msg)
             }
         } catch (e: Exception) {
             Log.w(TAG, "POST error: ${e.message}")
-            false
+            PostResult(false, 0, e.message ?: "Unknown error")
         } finally {
             conn.disconnect()
         }

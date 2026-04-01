@@ -33,8 +33,10 @@ class SettingsActivity : Activity() {
 
     private lateinit var endpointInput: EditText
     private lateinit var apiKeyInput: EditText
+    private lateinit var inviteCodeInput: EditText
     private lateinit var riderIdDisplay: TextView
     private lateinit var statusText: TextView
+    private lateinit var connectionStatus: TextView
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,29 +98,62 @@ class SettingsActivity : Activity() {
 
         layout.addView(spacer(16))
 
+        // Connection status indicator
+        connectionStatus = TextView(this).apply {
+            text = "Checking connection..."
+            textSize = 13f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(16, 12, 16, 12)
+            setBackgroundColor(Color.parseColor("#E8E8E8"))
+        }
+        layout.addView(connectionStatus)
+
+        layout.addView(spacer(16))
+
+        // Invite code (for registration)
+        layout.addView(label("Invite Code"))
+        inviteCodeInput = EditText(this).apply {
+            hint = "vv_invite_..."
+            textSize = 14f
+            setSingleLine(true)
+            setPadding(16, 16, 16, 16)
+        }
+        layout.addView(inviteCodeInput)
+
+        layout.addView(spacer(8))
+
+        // Register button right after invite code
+        val registerButton = Button(this).apply {
+            text = "Register with Invite Code"
+            setOnClickListener { doRegister() }
+        }
+        layout.addView(registerButton)
+
+        layout.addView(spacer(16))
+
+        // Rider ID (read-only)
+        layout.addView(label("Rider ID"))
+        riderIdDisplay = TextView(this).apply {
+            text = if (currentRiderId.isNotEmpty()) currentRiderId else "(not registered — enter invite code above)"
+            textSize = 14f
+            setTextColor(if (currentRiderId.isNotEmpty()) Color.parseColor("#1B3B2F") else Color.parseColor("#CC0000"))
+            setPadding(16, 16, 16, 16)
+        }
+        layout.addView(riderIdDisplay)
+
+        layout.addView(spacer(8))
+
         // API key (masked for security)
         layout.addView(label("API Key"))
         apiKeyInput = EditText(this).apply {
             setText(currentKey)
-            hint = "Enter your rider API key"
+            hint = "(auto-filled on registration)"
             textSize = 14f
             setSingleLine(true)
             setPadding(16, 16, 16, 16)
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         layout.addView(apiKeyInput)
-
-        layout.addView(spacer(16))
-
-        // Rider ID (read-only)
-        layout.addView(label("Rider ID (assigned by registration)"))
-        riderIdDisplay = TextView(this).apply {
-            text = if (currentRiderId.isNotEmpty()) currentRiderId else "(not registered)"
-            textSize = 14f
-            setTextColor(Color.DKGRAY)
-            setPadding(16, 16, 16, 16)
-        }
-        layout.addView(riderIdDisplay)
 
         layout.addView(spacer(24))
 
@@ -139,27 +174,30 @@ class SettingsActivity : Activity() {
             gravity = Gravity.CENTER
         }
 
-        val registerButton = Button(this).apply {
-            text = "Register"
-            setOnClickListener { doRegister() }
-        }
-
         val saveButton = Button(this).apply {
-            text = "Save"
+            text = "Save Settings"
             setOnClickListener { doSave() }
         }
 
-        buttonRow.addView(registerButton)
+        val testButton = Button(this).apply {
+            text = "Test Connection"
+            setOnClickListener { doTestConnection() }
+        }
+
+        buttonRow.addView(saveButton)
         buttonRow.addView(View(this).apply {
             layoutParams = LinearLayout.LayoutParams(32, 1)
         })
-        buttonRow.addView(saveButton)
+        buttonRow.addView(testButton)
         layout.addView(buttonRow)
 
         layout.addView(spacer(24))
 
         // Current config summary
         layout.addView(label("Extension active. Data fields available on ride screens."))
+
+        // Check connection status on load
+        checkConnectionStatus()
 
         root.addView(layout)
         setContentView(root)
@@ -188,15 +226,24 @@ class SettingsActivity : Activity() {
     }
 
     private fun doRegister() {
+        val inviteCode = inviteCodeInput.text.toString().trim()
+        if (inviteCode.isEmpty()) {
+            setStatus("Enter an invite code to register.")
+            return
+        }
+        if (!inviteCode.startsWith("vv_invite_")) {
+            setStatus("Invite code must start with vv_invite_")
+            return
+        }
+
         val endpoint = endpointInput.text.toString().trim()
-        // Derive base URL: strip /telemetry or /api/v1/telemetry to get the register endpoint
         val baseUrl = endpoint
             .removeSuffix("/telemetry")
             .removeSuffix("/")
         val registerUrl = "$baseUrl/register"
 
-        setStatus("Registering with $registerUrl ...")
-        Log.i(TAG, "Registering at $registerUrl")
+        setStatus("Registering...")
+        Log.i(TAG, "Registering at $registerUrl with invite code")
 
         scope.launch {
             try {
@@ -207,7 +254,7 @@ class SettingsActivity : Activity() {
                 conn.connectTimeout = 10000
                 conn.readTimeout = 10000
 
-                val body = """{"device_type":"karoo2","app_version":"${BuildConfig.VERSION_NAME}"}"""
+                val body = """{"invite_code":"$inviteCode","device_type":"karoo2","app_version":"${BuildConfig.VERSION_NAME}"}"""
                 conn.outputStream.use { it.write(body.toByteArray()) }
 
                 val code = conn.responseCode
@@ -215,8 +262,6 @@ class SettingsActivity : Activity() {
                     val response = conn.inputStream.bufferedReader().readText()
                     conn.disconnect()
 
-                    // Parse rider_id and api_key from JSON response
-                    // Simple parsing — no JSON lib dependency needed
                     val riderId = extractJsonValue(response, "rider_id")
                     val apiKey = extractJsonValue(response, "api_key")
                         ?: extractJsonValue(response, "key")
@@ -230,8 +275,10 @@ class SettingsActivity : Activity() {
 
                         runOnUiThread {
                             riderIdDisplay.text = riderId
+                            riderIdDisplay.setTextColor(Color.parseColor("#1B3B2F"))
                             apiKeyInput.setText(apiKey)
-                            setStatus("Registered. Rider ID: $riderId")
+                            inviteCodeInput.setText("")
+                            setStatus("Registered! Rider ID: $riderId\nAPI key saved. You're ready to ride.")
                         }
                         Log.i(TAG, "Registration successful: rider_id=$riderId")
                     } else {
@@ -244,7 +291,7 @@ class SettingsActivity : Activity() {
                     val errorBody = try { conn.errorStream?.bufferedReader()?.readText() ?: "" } catch (_: Exception) { "" }
                     conn.disconnect()
                     runOnUiThread {
-                        setStatus("Registration failed: HTTP $code $errorBody")
+                        setStatus("Registration failed: HTTP $code\n$errorBody")
                     }
                     Log.w(TAG, "Registration failed: $code $errorBody")
                 }
@@ -254,6 +301,92 @@ class SettingsActivity : Activity() {
                 }
                 Log.e(TAG, "Registration error", e)
             }
+        }
+    }
+
+    private fun doTestConnection() {
+        val endpoint = endpointInput.text.toString().trim()
+        val key = apiKeyInput.text.toString().trim()
+
+        if (key.isEmpty()) {
+            setStatus("No API key — register first.")
+            return
+        }
+
+        setStatus("Testing connection...")
+
+        scope.launch {
+            try {
+                val conn = URL(endpoint).openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("X-Device-Key", key)
+                conn.doOutput = true
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+
+                // Send a minimal test payload
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val riderId = prefs.getString(KEY_RIDER_ID, "test") ?: "test"
+                val testPayload = """{"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"${java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())}","ride_state":"TEST","elapsed_seconds":0,"gps":{"lat":0,"lon":0},"speed_ms":0,"cadence_rpm":0,"power_watts":0,"altitude_m":0,"grade_pct":0,"distance_m":0,"hr_bpm":0,"hrv":{"rmssd":0,"sdnn":0,"pnn50":0,"mean_rr_ms":0},"gforce":{"current":1.0,"peak":0,"lateral":0,"airborne":false,"hang_time_ms":0}}"""
+                conn.outputStream.use { it.write(testPayload.toByteArray()) }
+
+                val code = conn.responseCode
+                runOnUiThread {
+                    when (code) {
+                        in 200..299 -> {
+                            setStatus("Connection OK! Backend received test point.\nYou're ready to ride.")
+                            updateConnectionIndicator(true, "Connected — backend reachable")
+                        }
+                        401 -> setStatus("AUTH FAILED (401)\nYour API key is invalid or expired.\nTry re-registering with a new invite code.")
+                        403 -> setStatus("FORBIDDEN (403)\nBackend rejected the request.\nCheck your API key.")
+                        429 -> setStatus("RATE LIMITED (429)\nToo many requests. Wait a minute.")
+                        else -> setStatus("Backend returned HTTP $code\nCheck endpoint URL.")
+                    }
+                }
+                conn.disconnect()
+            } catch (e: Exception) {
+                runOnUiThread {
+                    setStatus("Connection failed: ${e.message}\nCheck network and endpoint URL.")
+                    updateConnectionIndicator(false, "Cannot reach backend")
+                }
+            }
+        }
+    }
+
+    private fun checkConnectionStatus() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = prefs.getString(KEY_RIDER_KEY, "") ?: ""
+        val riderId = prefs.getString(KEY_RIDER_ID, "") ?: ""
+
+        if (key.isEmpty() || riderId.isEmpty()) {
+            updateConnectionIndicator(false, "Not registered — enter invite code to get started")
+            return
+        }
+
+        // Check if extension is running and Polar is connected
+        val ext = VeloVigilExtension.instance
+        if (ext == null) {
+            updateConnectionIndicator(false, "Extension not running — restart Karoo")
+            return
+        }
+
+        val polarConnected = ext.polar?.isConnected == true
+        val lastFlush = ext.telemetry.lastFlushStatus
+
+        val parts = mutableListOf<String>()
+        parts.add("Rider: $riderId")
+        parts.add("Polar H10: ${if (polarConnected) "Connected" else "Not connected"}")
+        parts.add("Last upload: $lastFlush")
+
+        updateConnectionIndicator(polarConnected, parts.joinToString(" | "))
+    }
+
+    private fun updateConnectionIndicator(ok: Boolean, message: String) {
+        runOnUiThread {
+            connectionStatus.text = message
+            connectionStatus.setTextColor(if (ok) Color.parseColor("#1B3B2F") else Color.parseColor("#CC0000"))
+            connectionStatus.setBackgroundColor(if (ok) Color.parseColor("#D4EDDA") else Color.parseColor("#F8D7DA"))
         }
     }
 
