@@ -10,4 +10,34 @@
         graphical="false"
         icon="@drawable/ic_velovigil"
         typeId="fleet_status" />
+    <DataType
+        description="Onewheel pack battery percentage"
+        displayName="Board Battery"
+        graphical="false"
+        icon="@drawable/ic_velovigil"
+        typeId="board_battery" />
+    <DataType
+        description="Onewheel motor temperature in celsius"
+        displayName="Motor Temp"
+        graphical="false"
+        icon="@drawable/ic_velovigil"
+        typeId="motor_temp" />
+    <DataType
+        description="Onewheel safety headroom — low values mean pushback imminent"
+        displayName="Safety Headroom"
+        graphical="false"
+        icon="@drawable/ic_velovigil"
+        typeId="safety_headroom" />
+    <DataType
+        description="Onewheel motor current in amps"
+        displayName="Board Amps"
+        graphical="false"
+        icon="@drawable/ic_velovigil"
+        typeId="board_amps" />
+    <DataType
+        description="Onewheel speed derived from motor RPM"
+        displayName="Board Speed"
+        graphical="false"
+        icon="@drawable/ic_velovigil"
+        typeId="board_speed" />
 </ExtensionInfo>

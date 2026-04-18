@@ -31,14 +31,22 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
     val hrv = HRVProcessor()
     val gforce = GForceProcessor()
     var polar: PolarConnector? = null
+    var onewheel: OnewheelConnector? = null
     private val consumerIds = mutableListOf<String>()
     private var deviceEmitter: Emitter<DeviceEvent>? = null
     private var deviceStreamJob: Job? = null
     private val deviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var inactivityWatchdog: Job? = null
+    @Volatile private var lastBoardDataAt: Long = 0L
 
     override val types by lazy {
         listOf(
             FleetStatusDataType(extension),
+            BoardBatteryDataType(extension),
+            MotorTempDataType(extension),
+            HeadroomDataType(extension),
+            BoardAmpsDataType(extension),
+            BoardSpeedDataType(extension),
         )
     }
 
@@ -146,17 +154,95 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
             if (connected) {
                 Log.i(TAG, "Connected to Karoo system")
                 subscribeToData()
+                subscribeToRideState()
                 telemetry.start()
+                startOnewheelConnector(prefs)
+                startInactivityWatchdog()
             } else {
                 Log.w(TAG, "Failed to connect to Karoo system")
             }
         }
     }
 
+    private fun startOnewheelConnector(prefs: android.content.SharedPreferences) {
+        val token = prefs.getString(SettingsActivity.KEY_BOARD_TOKEN, "") ?: ""
+        val boardName = prefs.getString(SettingsActivity.KEY_BOARD_NAME, "") ?: ""
+        if (token.isEmpty() && boardName.isEmpty()) {
+            Log.i(TAG, "Onewheel: no token or board name configured — skipping board connection")
+            return
+        }
+        Log.i(TAG, "Starting OnewheelConnector (board=${boardName.ifEmpty { "any ow*" }})")
+        val ow = OnewheelConnector(this, telemetry, token, boardName)
+        ow.onBoardConnected = {
+            telemetry.boardConnected = true
+            lastBoardDataAt = System.currentTimeMillis()
+        }
+        ow.onBoardDisconnected = {
+            telemetry.boardConnected = false
+        }
+        ow.onBoardAuthenticated = {
+            Log.i(TAG, "Board authenticated — telemetry flowing")
+        }
+        ow.onTelemetryUpdate = {
+            lastBoardDataAt = System.currentTimeMillis()
+        }
+        ow.start()
+        onewheel = ow
+    }
+
+    private fun subscribeToRideState() {
+        // Listen to Karoo's own ride lifecycle — fixes stuck RECORDING when user hits stop on Karoo
+        val id = karooSystem.addConsumer<RideState> { event ->
+            when (event) {
+                is RideState.Recording -> telemetry.rideState = "RECORDING"
+                is RideState.Paused    -> telemetry.rideState = "PAUSED"
+                is RideState.Idle      -> telemetry.rideState = "IDLE"
+                else -> {}
+            }
+            Log.i(TAG, "RideState → ${telemetry.rideState}")
+        }
+        consumerIds.add(id)
+    }
+
+    /**
+     * Safety net for stuck RECORDING: if we haven't seen any telemetry movement
+     * (speed, board RPM, HR change) for 120s AND board isn't connected, flip to IDLE.
+     * This catches cases where the Karoo never emits RideState.Idle.
+     */
+    private fun startInactivityWatchdog() {
+        inactivityWatchdog = deviceScope.launch {
+            var lastSpeed = 0.0
+            var lastHr = 0
+            var lastRpm = 0
+            var lastChangeAt = System.currentTimeMillis()
+            while (isActive) {
+                delay(15_000L)
+                val now = System.currentTimeMillis()
+                val moved = telemetry.speed != lastSpeed ||
+                            telemetry.heartRate != lastHr ||
+                            telemetry.boardRpm != lastRpm ||
+                            telemetry.boardConnected
+                if (moved) {
+                    lastSpeed = telemetry.speed
+                    lastHr = telemetry.heartRate
+                    lastRpm = telemetry.boardRpm
+                    lastChangeAt = now
+                } else if (telemetry.rideState == "RECORDING" && now - lastChangeAt > 120_000L) {
+                    Log.w(TAG, "Inactivity watchdog: no motion 120s — flipping state to IDLE")
+                    telemetry.rideState = "IDLE"
+                    lastChangeAt = now
+                }
+            }
+        }
+    }
+
     override fun onDestroy() {
         Log.i(TAG, "veloVigil stopping")
+        inactivityWatchdog?.cancel()
         deviceScope.cancel()
         polar?.disconnect()
+        onewheel?.stop()
+        onewheel = null
         telemetry.stop()
         consumerIds.forEach { karooSystem.removeConsumer(it) }
         consumerIds.clear()

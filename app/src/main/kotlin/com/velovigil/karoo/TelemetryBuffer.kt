@@ -56,6 +56,17 @@ class TelemetryBuffer(
     @Volatile var isAirborne: Boolean = false
     @Volatile var hangTimeMs: Long = 0
 
+    // Onewheel board telemetry (from OnewheelConnector direct BLE)
+    @Volatile var boardBatteryPct: Int = -1
+    @Volatile var motorTempC: Int = -1
+    @Volatile var safetyHeadroom: Int = -1
+    @Volatile var boardCurrentAmps: Double = 0.0
+    @Volatile var boardRpm: Int = 0
+    @Volatile var boardSpeedRaw: Int = 0
+    @Volatile var pitchDeg: Double = 0.0
+    @Volatile var rollDeg: Double = 0.0
+    @Volatile var boardConnected: Boolean = false
+
     // Status reporting (for Settings UI)
     @Volatile var lastFlushStatus: String = "No uploads yet"
     @Volatile var totalSent: Int = 0
@@ -96,7 +107,12 @@ class TelemetryBuffer(
         val effectiveHR = if (heartRate > 0) heartRate
             else if (meanRR > 0) (60000.0 / meanRR).toInt()
             else 0
-        return """{"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$effectiveHR,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs}}"""
+        val boardSection = if (boardConnected || boardBatteryPct >= 0) {
+            ""","board":{"connected":$boardConnected,"battery_pct":$boardBatteryPct,"motor_temp_c":$motorTempC,"safety_headroom":$safetyHeadroom,"current_amps":${"%.2f".format(boardCurrentAmps)},"rpm":$boardRpm,"speed_raw":$boardSpeedRaw,"pitch_deg":${"%.2f".format(pitchDeg)},"roll_deg":${"%.2f".format(rollDeg)}}"""
+        } else {
+            ""
+        }
+        return """{"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$effectiveHR,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs}$boardSection}"""
     }
 
     private suspend fun flush() {

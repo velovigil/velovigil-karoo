@@ -28,12 +28,16 @@ class SettingsActivity : Activity() {
         const val KEY_FLEET_ENDPOINT = "fleet_endpoint"
         const val KEY_RIDER_KEY = "rider_key"
         const val KEY_RIDER_ID = "rider_id"
+        const val KEY_BOARD_TOKEN = "board_token"   // Polaris static token, 40 hex chars
+        const val KEY_BOARD_NAME = "board_name"     // BLE advertisement name, e.g. "ow452500"
         const val DEFAULT_ENDPOINT = "https://velovigil-fleet.robert-chuvala.workers.dev/api/v1/telemetry"
     }
 
     private lateinit var endpointInput: EditText
     private lateinit var apiKeyInput: EditText
     private lateinit var inviteCodeInput: EditText
+    private lateinit var boardTokenInput: EditText
+    private lateinit var boardNameInput: EditText
     private lateinit var riderIdDisplay: TextView
     private lateinit var statusText: TextView
     private lateinit var connectionStatus: TextView
@@ -157,6 +161,34 @@ class SettingsActivity : Activity() {
 
         layout.addView(spacer(24))
 
+        // Onewheel Board — Polaris token + name
+        val currentBoardToken = prefs.getString(KEY_BOARD_TOKEN, "") ?: ""
+        val currentBoardName = prefs.getString(KEY_BOARD_NAME, "") ?: ""
+        layout.addView(label("Onewheel Board Name (optional, e.g. ow452500)"))
+        boardNameInput = EditText(this).apply {
+            setText(currentBoardName)
+            hint = "leave blank to match any 'ow*' board"
+            textSize = 14f
+            setSingleLine(true)
+            setPadding(16, 16, 16, 16)
+        }
+        layout.addView(boardNameInput)
+
+        layout.addView(spacer(8))
+
+        layout.addView(label("Polaris Token (40 hex chars — see docs/POLARIS_TOKEN_EXTRACTION.md)"))
+        boardTokenInput = EditText(this).apply {
+            setText(currentBoardToken)
+            hint = "(leave blank for legacy MD5 auth)"
+            textSize = 14f
+            setSingleLine(true)
+            setPadding(16, 16, 16, 16)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        layout.addView(boardTokenInput)
+
+        layout.addView(spacer(24))
+
         // Status text
         statusText = TextView(this).apply {
             text = ""
@@ -196,6 +228,9 @@ class SettingsActivity : Activity() {
         // Current config summary
         layout.addView(label("Extension active. Data fields available on ride screens."))
 
+        // Auto-import config from setup script if present
+        importConfigIfPresent()
+
         // Check connection status on load
         checkConnectionStatus()
 
@@ -219,6 +254,8 @@ class SettingsActivity : Activity() {
         prefs.edit()
             .putString(KEY_FLEET_ENDPOINT, endpoint)
             .putString(KEY_RIDER_KEY, apiKeyInput.text.toString().trim())
+            .putString(KEY_BOARD_TOKEN, boardTokenInput.text.toString().trim())
+            .putString(KEY_BOARD_NAME, boardNameInput.text.toString().trim())
             .apply()
 
         Log.i(TAG, "Settings saved")
@@ -402,6 +439,46 @@ class SettingsActivity : Activity() {
         val pattern = """"$key"\s*:\s*"([^"]+)""""
         val match = Regex(pattern).find(json)
         return match?.groupValues?.get(1)
+    }
+
+    private fun importConfigIfPresent() {
+        try {
+            val configFile = java.io.File("/sdcard/velovigil/config.json")
+            if (!configFile.exists()) return
+
+            val json = configFile.readText()
+            val riderId = extractJsonValue(json, "rider_id")
+            val apiKey = extractJsonValue(json, "api_key")
+            val endpoint = extractJsonValue(json, "endpoint")
+            val boardName = extractJsonValue(json, "board_name")
+            val boardToken = extractJsonValue(json, "polaris_token")
+
+            if (riderId != null && apiKey != null) {
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val editor = prefs.edit()
+                editor.putString(KEY_RIDER_ID, riderId)
+                editor.putString(KEY_RIDER_KEY, apiKey)
+                if (endpoint != null) editor.putString(KEY_FLEET_ENDPOINT, endpoint)
+                if (boardName != null) editor.putString(KEY_BOARD_NAME, boardName)
+                if (boardToken != null) editor.putString(KEY_BOARD_TOKEN, boardToken)
+                editor.apply()
+
+                riderIdDisplay.text = riderId
+                riderIdDisplay.setTextColor(Color.parseColor("#1B3B2F"))
+                apiKeyInput.setText(apiKey)
+                if (endpoint != null) endpointInput.setText(endpoint)
+                if (boardName != null) boardNameInput.setText(boardName)
+                if (boardToken != null) boardTokenInput.setText(boardToken)
+                setStatus("Imported config from setup script. You're ready to ride.")
+                Log.i(TAG, "Auto-imported config: rider_id=$riderId boardName=$boardName token=${if (boardToken != null) "set" else "none"}")
+
+                // Delete the config file after import (one-time use)
+                configFile.delete()
+                java.io.File("/sdcard/velovigil").delete()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Config import failed: ${e.message}")
+        }
     }
 
     private fun label(text: String): TextView {
