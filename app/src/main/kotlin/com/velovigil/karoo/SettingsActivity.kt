@@ -1,14 +1,22 @@
 package com.velovigil.karoo
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import java.net.HttpURLConnection
 import java.net.URL
@@ -31,7 +39,28 @@ class SettingsActivity : Activity() {
         const val KEY_BOARD_TOKEN = "board_token"   // Polaris static token, 40 hex chars
         const val KEY_BOARD_NAME = "board_name"     // BLE advertisement name, e.g. "ow452500"
         const val DEFAULT_ENDPOINT = "https://velovigil-fleet.robert-chuvala.workers.dev/api/v1/telemetry"
+
+        private const val REQUEST_CODE_PERMS = 4201
+
+        // Permission set varies by API level — see AndroidManifest for maxSdkVersion attrs.
+        // API ≤30 (Karoo 2): BLE scan requires legacy BLUETOOTH perms + FINE_LOCATION.
+        // API ≥31 (Karoo 3): BLE scan requires BLUETOOTH_SCAN + BLUETOOTH_CONNECT.
+        fun requiredPermissions(): Array<String> =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                )
+            } else {
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                )
+                // BLUETOOTH + BLUETOOTH_ADMIN are normal perms on ≤30 — granted at install.
+                // FINE_LOCATION is the only dangerous one that blocks BLE scan.
+            }
     }
+
+    private lateinit var permissionBanner: TextView
 
     private lateinit var endpointInput: EditText
     private lateinit var apiKeyInput: EditText
@@ -89,6 +118,18 @@ class SettingsActivity : Activity() {
 
         // Spacer
         layout.addView(spacer(24))
+
+        // Permission banner — shown when Bluetooth/Location perms are missing.
+        // This is the #1 reason H10 pairing fails silently. Surface it hard.
+        permissionBanner = TextView(this).apply {
+            textSize = 14f
+            setPadding(24, 20, 24, 20)
+            typeface = Typeface.DEFAULT_BOLD
+            visibility = View.GONE
+            setOnClickListener { openAppPermissionSettings() }
+        }
+        layout.addView(permissionBanner)
+        layout.addView(spacer(8))
 
         // Fleet endpoint
         layout.addView(label("Fleet Endpoint URL"))
@@ -236,6 +277,85 @@ class SettingsActivity : Activity() {
 
         root.addView(layout)
         setContentView(root)
+
+        // Ask for Bluetooth/Location permissions if not already granted.
+        // Without these, PolarConnector's scan silently fails — the single biggest
+        // cause of "H10 not pairing" in v0.2.3 beta. Do this LAST so the UI is up first.
+        ensurePermissions()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // User may have just returned from system Permission settings — re-check.
+        updatePermissionBanner()
+    }
+
+    // ── Runtime Permissions ────────────────────────────────────────────
+
+    private fun hasAllPermissions(): Boolean =
+        requiredPermissions().all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+
+    private fun ensurePermissions() {
+        if (hasAllPermissions()) {
+            updatePermissionBanner()
+            return
+        }
+        val missing = requiredPermissions().filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+        Log.i(TAG, "Requesting ${missing.size} permission(s): ${missing.joinToString()}")
+        ActivityCompat.requestPermissions(this, missing, REQUEST_CODE_PERMS)
+        updatePermissionBanner()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_CODE_PERMS) return
+        val allGranted = grantResults.isNotEmpty() &&
+            grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        Log.i(TAG, "Permission result: allGranted=$allGranted")
+        updatePermissionBanner()
+    }
+
+    private fun updatePermissionBanner() {
+        runOnUiThread {
+            if (hasAllPermissions()) {
+                permissionBanner.visibility = View.GONE
+            } else {
+                permissionBanner.visibility = View.VISIBLE
+                permissionBanner.text = buildString {
+                    append("⚠ Bluetooth/Location permission not granted\n")
+                    append("Without this, the Polar H10 cannot be paired.\n")
+                    append("Tap to open Permissions — turn on ")
+                    append(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                            "\"Nearby devices\""
+                        else
+                            "\"Location\""
+                    )
+                }
+                permissionBanner.setTextColor(Color.parseColor("#721C24"))
+                permissionBanner.setBackgroundColor(Color.parseColor("#F8D7DA"))
+            }
+        }
+    }
+
+    private fun openAppPermissionSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not open app permission settings: ${e.message}")
+            setStatus("Open Karoo Settings → Apps → veloVigil → Permissions and grant Location / Nearby devices.")
+        }
     }
 
     override fun onDestroy() {
