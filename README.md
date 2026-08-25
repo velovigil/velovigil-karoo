@@ -2,91 +2,76 @@
 
 **Your ride. Your data. Your AI.**
 
-Open source Karoo extension that captures HR, HRV, power, and crash detection from your Polar H10. Your own Claude analyzes the data. We never touch it.
+Open-source Karoo 2/3 extension. It connects a **Polar H10** directly over Bluetooth, computes HRV on the Karoo from beat-to-beat RR intervals, records g-force from the H10's accelerometer, and sends ride telemetry to a Cloudflare backend you can read from your own Claude. We never analyze your rides.
 
-## What It Does
+Current release: **v0.2.4** (2026-08-25). Beta, invite-only.
 
-- **Heart rate** from any Bluetooth HR strap, displayed as a native Karoo sensor
-- **Real HRV** (RMSSD, SDNN, pNN50) from Polar H10 beat-to-beat RR intervals
-- **Crash detection** from H10 3-axis accelerometer, filtered with 50ms sliding window RMS
-- **Live telemetry** to a Cloudflare backend for dashboards and AI coaching
-- **Post-ride AI debrief** from your own Claude instance
+## What it does today
 
-Works with any BLE heart rate strap. Polar H10 unlocks HRV and crash detection.
+- **Heart rate** from a Polar H10, shown on the Karoo as the sensor "veloVigil HR"
+- **HRV** — RMSSD, SDNN, pNN50, mean RR — computed on-device from H10 RR intervals
+- **G-force** — filtered accelerometer (10-sample / 50 ms RMS window at 200 Hz); peak and average g, airborne time. A crash detector (>4 g sustained >200 ms) runs on-device and sets a flag; **no alert or upload is wired to it yet**
+- **Karoo data** — speed, power, cadence, distance from the Karoo's own streams
+- **Telemetry** every 5–10 s to the backend; a per-rider web dashboard with each ride's summary and a "Copy markdown" button
+- **Post-ride coaching** — you paste that markdown into your own Claude and ask. Nothing is sent to us for analysis
+
+## What it does not do (yet)
+
+- Work with heart-rate straps other than the Polar H10. The extension connects only to Polar devices and does not read the Karoo's own HR sensor. Other straps still work with the Karoo as usual; veloVigil just won't record their HR
+- Cardiac-drift, fatigue, or nutrition alerts. Those are questions you can ask Claude about a ride, not features in the extension
+- Crash alerts or crash upload (detector only, see above)
+- Data retention tiers, paid plans, FIT/GPX export, a companion phone app. None exist
 
 ## Install
 
-**Full install guide:** [velovigil.com/install](https://velovigil.com/install/)
+Full guide with pictures: [velovigil.com/start](https://velovigil.com/start/)
 
-Quick version:
-1. Download the APK from [Releases](https://github.com/velovigil/velovigil-karoo/releases/latest)
-2. Connect Karoo via USB, copy APK to the Download folder
-3. On Karoo, open the file and tap Install
-4. Go to Settings > Sensors > Scan — pair "veloVigil HR"
-5. Ride
+1. Get an invite code (sign up at [velovigil.com/start](https://velovigil.com/start/); codes go out by email)
+2. Download `velovigil-v0.2.4.apk` from [Releases](https://github.com/velovigil/velovigil-karoo/releases/latest) and sideload it (USB → Karoo's `Download` folder → open the file → Install; `adb install` also works)
+3. Open the veloVigil extension → **Settings**. **Allow the permission it asks for** (Karoo 2: Location; Karoo 3: Nearby devices + Location). Without it the H10 scan never runs and every ride records HR 0 — this was the April beta failure, fixed in 0.2.4
+4. Paste your invite code → **Register with Invite Code**. Your **Rider ID** appears on that screen; you'll use it for your dashboard
+5. If your H10 is paired to the Karoo directly, remove it from Settings → Sensors first. Then Settings → Sensors → Scan → pair **veloVigil HR**
+6. Ride
 
-## AI Coaching
+## Coaching
 
-After your ride, point your Claude at [velovigil.com/setup](https://velovigil.com/setup/). It reads the page, understands the system, and becomes your cycling coach. No configuration.
-
-## Strap Compatibility
-
-| Feature | Any BLE HR strap | Polar H10 |
-|---------|:---:|:---:|
-| Heart rate on Karoo | Yes | Yes |
-| HR zones and coaching | Yes | Yes |
-| Cardiac drift detection | Yes | Yes |
-| Live fleet dashboard | Yes | Yes |
-| HRV (RMSSD, SDNN, pNN50) | - | Yes |
-| Fatigue detection | - | Yes |
-| Crash detection (g-force) | - | Yes |
+After a ride: `https://velovigil-fleet.robert-chuvala.workers.dev/dashboard/<your Rider ID>` → open the ride → **Copy markdown** → paste into a fresh Claude conversation → "Coach me on this ride." The paste contains the whole summary; Claude does not need to fetch anything (its web tool cannot reach the API from claude.ai).
 
 ## Architecture
 
 ```
-Karoo 2/3                    Cloudflare
-+-----------------+          +------------------+
-| veloVigil ext   |  POST    | velovigil-fleet  |
-| - Polar BLE SDK |--------->| - D1 database    |
-| - HR provider   |  5-10s   | - Ride exports   |
-| - HRV compute   |          | - Live dashboard |
-| - G-force filter|          +--------+---------+
-+-----------------+                   |
-                                      | GET
-                              +-------v---------+
-                              | Your Claude      |
-                              | - Ride analysis  |
-                              | - Coaching       |
-                              | - Athlete Model  |
-                              +-----------------+
+Polar H10 ──BLE──▶ Karoo 2/3: veloVigil ext ──POST 5–10 s──▶ Cloudflare Worker + D1
+                    HR · HRV · g-force                          per-rider dashboard
+                    + Karoo speed/power/cadence/distance        ride export (JSON / markdown)
+                                                                        │ copy/paste
+                                                                        ▼
+                                                                  your Claude
 ```
 
-## Build From Source
+Backend source (`velovigil-fleet`) is currently a private repo. The API is documented at [velovigil.com/docs](https://velovigil.com/docs/).
+
+## Build from source
 
 ```bash
-git clone https://github.com/velovigil/velovigil-karoo.git
-cd velovigil-karoo
-./gradlew assembleDebug
-# APK at app/build/outputs/apk/debug/app-debug.apk
+git clone https://github.com/velovigil/velovigil-karoo.git && cd velovigil-karoo
+# karoo-ext is on GitHub Packages: needs a token with read:packages
+export GITHUB_USER=<you> GITHUB_TOKEN=<token-with-read:packages>
+./gradlew assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Requires: Android SDK, JDK 17+, Kotlin
+Requires Android SDK 34, JDK 17, Gradle 8.7 (wrapper included). Release builds are signed with `apksigner` after `assembleRelease`.
 
-## Tech Stack
+## Tech
 
-- **Karoo SDK:** io.hammerhead:karoo-ext:1.1.8
-- **Polar SDK:** com.polar:polar-ble-sdk (BLE HR, RR intervals, accelerometer)
-- **Backend:** Cloudflare Workers + D1 ([velovigil-fleet](https://github.com/velovigil/velovigil-fleet))
-- **Site:** Cloudflare Pages ([velovigil.com](https://velovigil.com))
-
-## License
-
-MIT
+- `io.hammerhead:karoo-ext:1.1.8`
+- `com.github.polarofficial:polar-ble-sdk:5.5.0` (HR, RR intervals, accelerometer)
+- Cloudflare Workers + D1 backend; Cloudflare Pages site
 
 ## Links
 
-- [velovigil.com](https://velovigil.com) - Project site
-- [Install guide](https://velovigil.com/install/) - Step-by-step for non-developers
-- [AI coach setup](https://velovigil.com/setup/) - Connect your Claude
-- [Fleet backend](https://github.com/velovigil/velovigil-fleet) - Cloudflare Worker source
-- [Karoo dev reference](KAROO_DEV_REFERENCE.md) - Hard-won knowledge from building this
+- [velovigil.com/start](https://velovigil.com/start/) — the one path: sign up → install → permission → pair → ride → coach
+- [Docs / API reference](https://velovigil.com/docs/)
+- [KAROO_DEV_REFERENCE.md](KAROO_DEV_REFERENCE.md) — what we learned building on Karoo
+- [CHANGELOG.md](CHANGELOG.md)
+
+MIT License.
