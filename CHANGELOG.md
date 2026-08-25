@@ -22,6 +22,13 @@ Karoo 2/3 Android extension for veloVigil. Captures biometric telemetry (Polar H
 | Karoo built-in GPS | `karoo-ext` SDK | Speed, distance, elevation |
 | Karoo built-in power meter | `karoo-ext` SDK | If paired externally |
 
+## 0.2.4 — 2026-08-25 (release: pending karoo-ext package token)
+
+- **Runtime permission request in SettingsActivity** (commit ee0acc8, 2026-04-19, never released). On Karoo 2 (API 30) ACCESS_FINE_LOCATION, on Karoo 3 (API 31+) BLUETOOTH_SCAN + BLUETOOTH_CONNECT, are *dangerous* permissions; without the runtime grant the Polar H10 BLE scan never runs. Fleet D1 receipt for why this matters: rider `rider_ccadecvi13w4` has 9 sessions (2026-04-23..25), every one `avg_hr 0 / max_hr 0`, last live point `hr 0, lat 0, lon 0` from `device_id karoo2`. Distance populated, sensors never granted.
+- `scripts/pre-beta.sh` smoke gate (S1). Run before any invite.
+- Signer: `velovigil-release-v2.keystore`, alias `velovigil` — same cert as v0.2.3 (`FD:6D:FB:A1…6E:3A`), so this installs as an upgrade.
+- Build note: `io.hammerhead:karoo-ext:1.1.8` is on GitHub Packages and needs a token with `read:packages` (`gpr.key` / `GITHUB_TOKEN`); the tokens on Lares as of 2026-08-25 return 401.
+
 ## 0.2.3 — 2026-04-18 (local commit, not released)
 
 ### Added
