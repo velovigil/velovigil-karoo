@@ -20,7 +20,11 @@
         <!-- veloVigil Extension Service -->
         <service
             android:name=".VeloVigilExtension"
-            android:exported="true">
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Continuous ride telemetry capture to the veloVigil fleet backend while a ride is recording." />
             <intent-filter>
                 <action android:name="io.hammerhead.karooext.KAROO_EXTENSION" />
             </intent-filter>

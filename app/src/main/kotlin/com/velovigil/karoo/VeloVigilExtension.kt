@@ -1,6 +1,11 @@
 package com.velovigil.karoo
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.util.Log
 import io.hammerhead.karooext.extension.KarooExtension
 import io.hammerhead.karooext.extension.DataTypeImpl
@@ -160,14 +165,68 @@ class VeloVigilExtension : KarooExtension("velovigil", BuildConfig.VERSION_NAME)
         // Listen to Karoo's own ride lifecycle — fixes stuck RECORDING when user hits stop on Karoo
         val id = karooSystem.addConsumer<RideState> { event ->
             when (event) {
-                is RideState.Recording -> telemetry.rideState = "RECORDING"
+                is RideState.Recording -> { telemetry.rideState = "RECORDING"; enterForeground() }
                 is RideState.Paused    -> telemetry.rideState = "PAUSED"
-                is RideState.Idle      -> telemetry.rideState = "IDLE"
+                is RideState.Idle      -> { telemetry.rideState = "IDLE"; exitForeground() }
                 else -> {}
             }
-            Log.i(TAG, "RideState → ${telemetry.rideState}")
+            Log.i(TAG, "RideState → ${telemetry.rideState} (foreground=$isForeground)")
         }
         consumerIds.add(id)
+    }
+
+    // --- Foreground service: keep the extension alive for the whole ride so the
+    // Karoo cannot tear it down mid-ride. Without this, telemetry (gated on
+    // rideState == RECORDING) is never captured when no data field holds the service.
+    // All wrapped so a promotion failure degrades to prior behavior — never a crash.
+    private var isForeground = false
+    private val notifChannelId = "velovigil_ride_capture"
+    private val notifId = 4207
+
+    private fun ensureChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm != null && nm.getNotificationChannel(notifChannelId) == null) {
+                nm.createNotificationChannel(
+                    NotificationChannel(notifChannelId, "veloVigil ride capture", NotificationManager.IMPORTANCE_LOW)
+                )
+            }
+        }
+    }
+
+    private fun enterForeground() {
+        if (isForeground) return
+        try {
+            ensureChannel()
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                Notification.Builder(this, notifChannelId) else @Suppress("DEPRECATION") Notification.Builder(this)
+            val n = builder
+                .setContentTitle("veloVigil")
+                .setContentText("Capturing ride telemetry")
+                .setSmallIcon(R.drawable.ic_velovigil)
+                .setOngoing(true)
+                .build()
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(notifId, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(notifId, n)
+            }
+            isForeground = true
+            Log.i(TAG, "Foreground STARTED — service pinned for ride capture")
+        } catch (e: Exception) {
+            Log.w(TAG, "startForeground failed, continuing without it (behavior unchanged): ${e.message}")
+        }
+    }
+
+    private fun exitForeground() {
+        if (!isForeground) return
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            isForeground = false
+            Log.i(TAG, "Foreground STOPPED — ride ended")
+        } catch (e: Exception) {
+            Log.w(TAG, "stopForeground failed: ${e.message}")
+        }
     }
 
     /**
