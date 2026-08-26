@@ -36,8 +36,6 @@ class SettingsActivity : Activity() {
         const val KEY_FLEET_ENDPOINT = "fleet_endpoint"
         const val KEY_RIDER_KEY = "rider_key"
         const val KEY_RIDER_ID = "rider_id"
-        const val KEY_BOARD_TOKEN = "board_token"   // Polaris static token, 40 hex chars
-        const val KEY_BOARD_NAME = "board_name"     // BLE advertisement name, e.g. "ow452500"
         const val DEFAULT_ENDPOINT = "https://velovigil-fleet.robert-chuvala.workers.dev/api/v1/telemetry"
 
         private const val REQUEST_CODE_PERMS = 4201
@@ -65,8 +63,6 @@ class SettingsActivity : Activity() {
     private lateinit var endpointInput: EditText
     private lateinit var apiKeyInput: EditText
     private lateinit var inviteCodeInput: EditText
-    private lateinit var boardTokenInput: EditText
-    private lateinit var boardNameInput: EditText
     private lateinit var riderIdDisplay: TextView
     private lateinit var statusText: TextView
     private lateinit var connectionStatus: TextView
@@ -106,7 +102,9 @@ class SettingsActivity : Activity() {
         }
 
         val version = TextView(this).apply {
-            text = "v${BuildConfig.VERSION_NAME}"
+            // Read at runtime: Kotlin constant-folds BuildConfig.VERSION_NAME into this class and an
+            // incremental build shipped 0.3.1 with a "v0.2.4" banner (2026-08-26).
+            text = "v" + runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrDefault(BuildConfig.VERSION_NAME)
             textSize = 14f
             setTextColor(Color.parseColor("#CCCCCC"))
             gravity = Gravity.CENTER
@@ -202,33 +200,6 @@ class SettingsActivity : Activity() {
 
         layout.addView(spacer(24))
 
-        // Onewheel Board — Polaris token + name
-        val currentBoardToken = prefs.getString(KEY_BOARD_TOKEN, "") ?: ""
-        val currentBoardName = prefs.getString(KEY_BOARD_NAME, "") ?: ""
-        layout.addView(label("Onewheel Board Name (optional, e.g. ow452500)"))
-        boardNameInput = EditText(this).apply {
-            setText(currentBoardName)
-            hint = "leave blank to match any 'ow*' board"
-            textSize = 14f
-            setSingleLine(true)
-            setPadding(16, 16, 16, 16)
-        }
-        layout.addView(boardNameInput)
-
-        layout.addView(spacer(8))
-
-        layout.addView(label("Polaris Token (40 hex chars — see docs/POLARIS_TOKEN_EXTRACTION.md)"))
-        boardTokenInput = EditText(this).apply {
-            setText(currentBoardToken)
-            hint = "(leave blank for legacy MD5 auth)"
-            textSize = 14f
-            setSingleLine(true)
-            setPadding(16, 16, 16, 16)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        layout.addView(boardTokenInput)
-
-        layout.addView(spacer(24))
 
         // Status text
         statusText = TextView(this).apply {
@@ -374,8 +345,6 @@ class SettingsActivity : Activity() {
         prefs.edit()
             .putString(KEY_FLEET_ENDPOINT, endpoint)
             .putString(KEY_RIDER_KEY, apiKeyInput.text.toString().trim())
-            .putString(KEY_BOARD_TOKEN, boardTokenInput.text.toString().trim())
-            .putString(KEY_BOARD_NAME, boardNameInput.text.toString().trim())
             .apply()
 
         Log.i(TAG, "Settings saved")
@@ -529,6 +498,10 @@ class SettingsActivity : Activity() {
         }
 
         val polarConnected = ext.polar?.isConnected == true
+        if (ext.polar?.pairingPending == true) {
+            updateConnectionIndicator(false, "H10 PAIRING REQUEST WAITING — swipe down from the top of the Karoo screen and tap PAIR & CONNECT (once; the Karoo remembers it)")
+            return
+        }
         val lastFlush = ext.telemetry.lastFlushStatus
 
         val parts = mutableListOf<String>()
@@ -563,15 +536,21 @@ class SettingsActivity : Activity() {
 
     private fun importConfigIfPresent() {
         try {
-            val configFile = java.io.File("/sdcard/velovigil/config.json")
-            if (!configFile.exists()) return
+            // /sdcard/velovigil needs READ_EXTERNAL_STORAGE, which this app does not declare, so that
+            // path never worked on a real Karoo (Permission denied, 2026-08-26). The app-specific external
+            // dir needs no permission and is adb-pushable:
+            //   adb push config.json /sdcard/Android/data/com.velovigil.karoo/files/config.json
+            val candidates = listOfNotNull(
+                getExternalFilesDir(null)?.let { java.io.File(it, "config.json") },
+                java.io.File("/sdcard/velovigil/config.json"),
+            )
+            val configFile = candidates.firstOrNull { f -> runCatching { f.exists() && f.canRead() }.getOrDefault(false) } ?: return
+            Log.i(TAG, "Importing config from ${configFile.path}")
 
             val json = configFile.readText()
             val riderId = extractJsonValue(json, "rider_id")
             val apiKey = extractJsonValue(json, "api_key")
             val endpoint = extractJsonValue(json, "endpoint")
-            val boardName = extractJsonValue(json, "board_name")
-            val boardToken = extractJsonValue(json, "polaris_token")
 
             if (riderId != null && apiKey != null) {
                 val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -579,22 +558,17 @@ class SettingsActivity : Activity() {
                 editor.putString(KEY_RIDER_ID, riderId)
                 editor.putString(KEY_RIDER_KEY, apiKey)
                 if (endpoint != null) editor.putString(KEY_FLEET_ENDPOINT, endpoint)
-                if (boardName != null) editor.putString(KEY_BOARD_NAME, boardName)
-                if (boardToken != null) editor.putString(KEY_BOARD_TOKEN, boardToken)
                 editor.apply()
 
                 riderIdDisplay.text = riderId
                 riderIdDisplay.setTextColor(Color.parseColor("#1B3B2F"))
                 apiKeyInput.setText(apiKey)
                 if (endpoint != null) endpointInput.setText(endpoint)
-                if (boardName != null) boardNameInput.setText(boardName)
-                if (boardToken != null) boardTokenInput.setText(boardToken)
                 setStatus("Imported config from setup script. You're ready to ride.")
-                Log.i(TAG, "Auto-imported config: rider_id=$riderId boardName=$boardName token=${if (boardToken != null) "set" else "none"}")
+                Log.i(TAG, "Auto-imported config: rider_id=$riderId")
 
                 // Delete the config file after import (one-time use)
                 configFile.delete()
-                java.io.File("/sdcard/velovigil").delete()
             }
         } catch (e: Exception) {
             Log.w(TAG, "Config import failed: ${e.message}")

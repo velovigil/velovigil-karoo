@@ -22,6 +22,13 @@ Karoo 2/3 Android extension for veloVigil. Captures biometric telemetry (Polar H
 | Karoo built-in GPS | `karoo-ext` SDK | Speed, distance, elevation |
 | Karoo built-in power meter | `karoo-ext` SDK | If paired externally |
 
+## 0.3.2 — 2026-08-26 (pre-release: the HR-0 root cause, and the Onewheel moves out)
+
+- **HR-0 root cause found on a real Karoo 2 and named in the UI.** The Polar SDK path runs on Android's Bluetooth stack (native Karoo sensors use a separate nRF radio); the H10 asks for encryption; Android posts a *Pairing request* notification nobody can see on a Karoo; the bond times out after ~30 s and the stack cuts the link (HCI reason 22) — every ~37 s, forever, with `hr_bpm 0` on every upload. The Location permission (0.2.4) was necessary, not sufficient. **Install step: after pairing "veloVigil HR", swipe down from the top of the Karoo screen and tap PAIR & CONNECT once.** `PolarConnector` now listens for `BOND_STATE_CHANGED`; Settings shows *H10 PAIRING REQUEST WAITING* while the prompt is up. Measured receipt: rider `rider_c6y0299oawd0`, first `hr_bpm > 0` (max 80) after the bond, 2026-08-26.
+- **Onewheel connector and board data fields removed** — they become their own extension (*Player Zero for Karoo*). veloVigil is the cycling product; a rider's Settings no longer carries a board token. Telemetry payload no longer emits a `board` section.
+- **Version banner read at runtime.** Kotlin constant-folded `BuildConfig.VERSION_NAME` into `SettingsActivity` and an incremental build shipped 0.3.1 with a "v0.2.4" banner. Release builds now run `clean` first (`scripts/release.sh`).
+- **Config import fixed.** `/sdcard/velovigil/config.json` needed a storage permission the app never declared (dead on device). Now reads the app-specific dir first: `adb push config.json /sdcard/Android/data/com.velovigil.karoo/files/config.json`.
+
 ## 0.3.1 — 2026-08-26 (pre-release: Onewheel on the Karoo, the Player Zero recipe)
 
 - **Onewheel GT-S connector brought up to Player Zero's verified recipe** (`player-zero-app/captures/PROTOCOL.md`, SOLVED 2026-08-22): token write → FM's 20-frame post-unlock setup burst once (150 ms spacing) → notification subscriptions → re-poke the token every **6 s** (was 15 s, which let the board soft-relock and stream zeros). Battery-verify read now fires only after the token write, not after every setup frame.

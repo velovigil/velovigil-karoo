@@ -66,7 +66,7 @@ class TyrewizConsumer(private val karoo: KarooSystemService) {
 
 ### 2. Patch `TelemetryBuffer.kt`
 
-Add three fields (mirror the `board*` field pattern from Onewheel integration):
+Add three fields (same `DataTypeImpl` pattern as `fleet_status`):
 
 ```kotlin
 @Volatile var tirePressureFrontPsi: Double? = null
@@ -149,4 +149,4 @@ Once Rob has fresh CR1632 installed and Tyrewiz paired to Karoo:
 
 **Prereq signal:** Rob has Tyrewiz pairing confirmed on Karoo (Step 1 of test plan above succeeds). Once paired, the code integration above is ~2-3 hours of focused work including a signed release APK.
 
-**If pairing fails (native ANT+ path not available):** fall back to direct BLE client following the `OnewheelConnector` pattern — ~30-60 min of btsnoop mapping + a BLE client class. Worst-case, not best-case.
+**If pairing fails (native ANT+ path not available):** fall back to a direct BLE GATT client (the Player Zero for Karoo extension has a worked example) — ~30-60 min of btsnoop mapping + a BLE client class. Worst-case, not best-case.

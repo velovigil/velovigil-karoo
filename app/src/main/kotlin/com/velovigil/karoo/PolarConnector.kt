@@ -1,6 +1,10 @@
 package com.velovigil.karoo
 
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.util.Log
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
@@ -44,6 +48,52 @@ class PolarConnector(
     private val disposables = CompositeDisposable()
     private var connectedDeviceId: String? = null
     @Volatile var isConnected: Boolean = false
+
+    /**
+     * True while Android has a BLE pairing-consent notification up for the H10.
+     * The Polar SDK path runs on Android's Bluetooth stack (the Karoo's native sensors use a separate
+     * nRF radio), the H10 asks for encryption, Android posts a "Pairing request" that nobody can see on
+     * a Karoo, the bond times out after ~30 s and the stack drops the link (HCI reason 22) — forever,
+     * every ~37 s. That was the whole of the HR-0 defect on Rob's Karoo 2 (2026-08-26). Accepting the
+     * prompt once (swipe down from the top of the screen) bonds the strap and the Karoo remembers it.
+     */
+    @Volatile var pairingPending: Boolean = false
+    @Volatile var lastStatus: String = ""
+
+    private val bondReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            if (intent.action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return
+            val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+            val dev = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+            val name = runCatching { dev?.name }.getOrNull() ?: dev?.address ?: "?"
+            when (state) {
+                BluetoothDevice.BOND_BONDING -> {
+                    pairingPending = true
+                    lastStatus = "Pairing request waiting for $name — swipe down and tap PAIR & CONNECT"
+                    Log.w(TAG, "BOND_BONDING for $name — Android is showing a pairing request; it must be accepted from the notification shade or the H10 link drops in ~30 s")
+                }
+                BluetoothDevice.BOND_BONDED -> {
+                    pairingPending = false
+                    lastStatus = "Bonded with $name"
+                    Log.i(TAG, "BOND_BONDED for $name — HR notifications can now flow")
+                }
+                BluetoothDevice.BOND_NONE -> {
+                    val was = pairingPending
+                    pairingPending = false
+                    if (was) {
+                        lastStatus = "Pairing request timed out for $name — it will come back; accept it from the shade"
+                        Log.w(TAG, "BOND_NONE for $name after BONDING — pairing request was not accepted in time")
+                    }
+                }
+            }
+        }
+    }
+
+    init {
+        runCatching {
+            context.applicationContext.registerReceiver(bondReceiver, IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED))
+        }.onFailure { Log.w(TAG, "bond receiver: ${it.message}") }
+    }
     @Volatile var h10Battery: Int = -1
 
     // Callbacks for device event bridge (set by VeloVigilExtension.connectDevice)
