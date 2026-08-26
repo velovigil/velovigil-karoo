@@ -6,6 +6,15 @@ Open-source Karoo 2/3 extension. It connects a **Polar H10** directly over Bluet
 
 Current release: **v0.2.4** (2026-08-25). Beta, invite-only.
 
+## The strap already does this
+
+| The H10 sends | Karoo shows | veloVigil reads |
+|---|---|---|
+| Heart rate | yes | yes |
+| Beat-to-beat RR intervals | no | yes → HRV (RMSSD, SDNN, pNN50) computed on the Karoo |
+| 3-axis accelerometer, 200 Hz | no | yes → filtered g-force, airborne time, on-device crash detector (no alert wired yet) |
+| Single-lead ECG, 130 Hz | no | not yet |
+
 ## What it does today
 
 - **Heart rate** from a Polar H10, shown on the Karoo as the sensor "veloVigil HR"
