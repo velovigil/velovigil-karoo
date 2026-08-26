@@ -55,6 +55,8 @@ class TelemetryBuffer(
     @Volatile var lateralG: Double = 0.0
     @Volatile var isAirborne: Boolean = false
     @Volatile var hangTimeMs: Long = 0
+    // v0.3.0: the processor itself, so the payload can take the per-window peak and drain per-feature events
+    @Volatile var gforceSource: GForceProcessor? = null
 
     // Onewheel board telemetry (from OnewheelConnector direct BLE)
     @Volatile var boardBatteryPct: Int = -1
@@ -112,7 +114,13 @@ class TelemetryBuffer(
         } else {
             ""
         }
-        return """{"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$effectiveHR,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs}$boardSection}"""
+        val nowMs = System.currentTimeMillis()
+        val windowPeak = gforceSource?.takeWindowPeak() ?: 0.0
+        val vibration = gforceSource?.vibrationRMS ?: 0.0
+        val eventsJson = (gforceSource?.drainEvents() ?: emptyList()).joinToString(",") { e ->
+            """{"type":"${e.type}","t_offset_ms":${(nowMs - e.atMs).coerceAtLeast(0)},"hang_ms":${e.hangMs},"landing_g":${"%.2f".format(e.landingG)},"lateral_g":${"%.2f".format(e.lateralG)},"g":${"%.2f".format(e.g)},"duration_ms":${e.durationMs}}"""
+        }
+        return """{"schema":3,"device_id":"karoo2","rider_id":"$riderId","timestamp_utc":"$ts","ride_state":"$rideState","elapsed_seconds":$elapsedTime,"gps":{"lat":$latitude,"lon":$longitude},"speed_ms":$speed,"cadence_rpm":$cadence,"power_watts":$power,"altitude_m":$altitude,"grade_pct":$grade,"distance_m":$distance,"hr_bpm":$effectiveHR,"hrv":{"rmssd":${"%.1f".format(rmssd)},"sdnn":${"%.1f".format(sdnn)},"pnn50":${"%.1f".format(pnn50)},"mean_rr_ms":${"%.1f".format(meanRR)}},"gforce":{"current":${"%.2f".format(currentG)},"peak":${"%.2f".format(peakG)},"lateral":${"%.2f".format(lateralG)},"airborne":$isAirborne,"hang_time_ms":$hangTimeMs,"window_peak":${"%.2f".format(windowPeak)},"vibration":${"%.3f".format(vibration)}},"events":[$eventsJson]$boardSection}"""
     }
 
     private suspend fun flush() {

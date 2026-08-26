@@ -28,6 +28,7 @@ class GForceProcessor {
         private const val CRASH_G_THRESHOLD = 4.0     // filtered g above this = crash candidate
         private const val CRASH_DURATION_MS = 200L     // must sustain for this long
         private const val CRASH_COOLDOWN_MS = 30_000L  // don't re-trigger for 30s
+        private const val LANDING_WINDOW_MS = 300L     // landing g = peak filtered g in this window after touchdown
     }
 
     // Filtered values (sliding window RMS — what the body actually feels)
@@ -39,6 +40,20 @@ class GForceProcessor {
     // Peak filtered values for current ride
     @Volatile var peakG: Double = 0.0
     @Volatile var peakLateralG: Double = 0.0
+
+    // v0.3.0: per-upload-window peak (reset when the telemetry payload is built) + per-feature event log.
+    @Volatile var windowPeakG: Double = 0.0
+    data class Event(val type: String, val atMs: Long, val hangMs: Long = 0, val landingG: Double = 0.0, val lateralG: Double = 0.0, val g: Double = 0.0, val durationMs: Long = 0)
+    private val events = java.util.concurrent.ConcurrentLinkedQueue<Event>()
+    private var landingAtMs: Long = 0
+    private var landingPeakG: Double = 0.0
+    private var landingPeakLat: Double = 0.0
+    private var pendingHangMs: Long = 0
+
+    /** Peak filtered g since the last call; resets. */
+    fun takeWindowPeak(): Double { val v = windowPeakG; windowPeakG = 0.0; return v }
+    /** Drain events recorded since the last call. */
+    fun drainEvents(): List<Event> { val out = mutableListOf<Event>(); while (true) { val e = events.poll() ?: break; out.add(e) }; return out }
 
     // Raw instantaneous (for diagnostics only, not used for detection)
     @Volatile var rawG: Double = 1.0
@@ -95,6 +110,7 @@ class GForceProcessor {
 
         // Update peaks (filtered values only)
         if (currentG > peakG) peakG = currentG
+        if (currentG > windowPeakG) windowPeakG = currentG
         if (abs(lateralG) > peakLateralG) peakLateralG = abs(lateralG)
 
         // Jump detection — airborne when filtered g < 0.3
@@ -107,6 +123,16 @@ class GForceProcessor {
             hangTimeMs = now - airborneStartTime
             if (hangTimeMs > 100) {
                 Log.i(TAG, "JUMP! Hang: ${hangTimeMs}ms, Impact: ${"%.1f".format(currentG)}g (raw peak: ${"%.1f".format(rawG)}g)")
+                // Open a landing window: the landing g is the peak filtered g in the next 300 ms.
+                landingAtMs = now; pendingHangMs = hangTimeMs; landingPeakG = currentG; landingPeakLat = abs(lateralG)
+            }
+        }
+        if (landingAtMs != 0L) {
+            if (currentG > landingPeakG) landingPeakG = currentG
+            if (abs(lateralG) > landingPeakLat) landingPeakLat = abs(lateralG)
+            if (now - landingAtMs >= LANDING_WINDOW_MS) {
+                events.add(Event("jump", landingAtMs, hangMs = pendingHangMs, landingG = landingPeakG, lateralG = landingPeakLat))
+                landingAtMs = 0L
             }
         }
 
@@ -117,6 +143,7 @@ class GForceProcessor {
             if (duration >= CRASH_DURATION_MS && (now - lastCrashTime) > CRASH_COOLDOWN_MS) {
                 crashDetected = true
                 lastCrashTime = now
+                events.add(Event("crash", now, g = currentG, durationMs = duration))
                 Log.w(TAG, "CRASH DETECTED! Filtered: ${"%.1f".format(currentG)}g sustained for ${duration}ms")
             }
         } else {

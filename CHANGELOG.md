@@ -22,6 +22,13 @@ Karoo 2/3 Android extension for veloVigil. Captures biometric telemetry (Polar H
 | Karoo built-in GPS | `karoo-ext` SDK | Speed, distance, elevation |
 | Karoo built-in power meter | `karoo-ext` SDK | If paired externally |
 
+## 0.3.0 — 2026-08-25 (pre-release: the DH view's data)
+
+- **Per-feature events.** `GForceProcessor` records a `jump` event on every landing: hang time, landing g (peak filtered g in the 300 ms after touchdown), lateral g; and a `crash` event when the 4 g/200 ms detector fires. `TelemetryBuffer` drains them into each payload as `events:[{type,t_offset_ms,hang_ms,landing_g,lateral_g,g,duration_ms}]`.
+- **Per-window peak g** (`gforce.window_peak`, reset on every upload) and `gforce.vibration` (road-roughness RMS). Payload carries `"schema":3`; the worker's DH view (`/dashboard/<rider>/dh/<session>`) renders both shapes and says which it has.
+- **HRV artifact rejection.** RR outside 300–2000 ms or a beat-to-beat jump > 400 ms is dropped; a May 2026 ride stored RMSSD 14,079 ms at HR 83, which no heart can do.
+- Same signing cert as 0.2.3/0.2.4. Pre-release until a real ride confirms events on the dashboard; the Extension Library manifest stays on 0.2.4 until then.
+
 ## 0.2.4 — 2026-08-25 (release: pending karoo-ext package token)
 
 - **Runtime permission request in SettingsActivity** (commit ee0acc8, 2026-04-19, never released). On Karoo 2 (API 30) ACCESS_FINE_LOCATION, on Karoo 3 (API 31+) BLUETOOTH_SCAN + BLUETOOTH_CONNECT, are *dangerous* permissions; without the runtime grant the Polar H10 BLE scan never runs. Fleet D1 receipt for why this matters: rider `rider_ccadecvi13w4` has 9 sessions (2026-04-23..25), every one `avg_hr 0 / max_hr 0`, last live point `hr 0, lat 0, lon 0` from `device_id karoo2`. Distance populated, sensors never granted.

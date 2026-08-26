@@ -26,6 +26,12 @@ class HRVProcessor(
     @Volatile var sampleCount: Int = 0
 
     fun addRR(rrMs: Int) {
+        // v0.3.0 artifact rejection: physiologic RR is 300–2000 ms (30–200 bpm). Anything else is a dropout
+        // or a reconnect gap, and one of those drove RMSSD to 14,079 ms in a May 2026 ride. Also reject a
+        // successive difference > 400 ms — no heart does that beat to beat; a strap does.
+        if (rrMs < 300 || rrMs > 2000) return
+        val prev = rrBuffer.lastOrNull()
+        if (prev != null && kotlin.math.abs(rrMs - prev) > 400) return
         val now = System.currentTimeMillis()
         val windowMs = windowSeconds * 1000L
 

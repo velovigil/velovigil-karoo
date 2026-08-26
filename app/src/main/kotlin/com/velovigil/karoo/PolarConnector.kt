@@ -178,6 +178,7 @@ class PolarConnector(
                 for (sample in accData.samples) {
                     gforce.addSample(sample.x, sample.y, sample.z)
                 }
+                if (telemetry.gforceSource == null) telemetry.gforceSource = gforce
                 telemetry.currentG = gforce.currentG
                 telemetry.peakG = gforce.peakG
                 telemetry.lateralG = gforce.lateralG
