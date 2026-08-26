@@ -30,7 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Auth paths:
  *   - Polaris static token (firmware ≥ 6215, incl. GT-S) — write 20-byte token to
- *     UART Write char, rewrite every 15s as keep-alive
+ *     UART Write char, then FM's post-unlock setup burst once, then re-poke the token
+ *     every 6 s (Player Zero recipe, verified live 2026-08-22)
  *   - Legacy MD5 challenge-response (pre-Polaris firmware) — subscribe to UART
  *     Read, write FW rev back, collect 20-byte challenge, compute MD5(challenge+key),
  *     send response, re-auth every 20s
@@ -79,7 +80,19 @@ class OnewheelConnector(
 
         // Wheel circumference for RPM→m/s conversion: GT-S is 11.5" tire, 36.1" rolling circumference
         private const val WHEEL_CIRCUMFERENCE_M = 0.917 // 36.1" → 0.917m
-        private const val KEEP_ALIVE_INTERVAL_MS = 15_000L  // Polaris: 15s. Legacy: override to 20s
+        // 0.3.1 (2026-08-26): 6 s, per Player Zero's verified recipe (captures/PROTOCOL.md, SOLVED 2026-08-22).
+        // The 15 s rewrite let the board soft-relock and stream 00 00 zeros between pokes.
+        private const val KEEP_ALIVE_INTERVAL_MS = 6_000L
+        private const val SETUP_FRAME_SPACING_MS = 150L
+        // Post-unlock setup burst, replayed verbatim from the FM app's handshake (ride-20260414.btsnoop).
+        // Sent ONCE after the token is accepted. Without it the board drops the link at ~30 s;
+        // with it the link held for a whole session in Player Zero's live test.
+        private val POST_UNLOCK_SETUP: List<String> = listOf(
+            "160102", "1209db45de6900000000f6", "1c01bf",
+            "1803140010", "1803180010", "1803280009", "1803340004", "1803040010", "1803080010",
+            "0c00", "2f022002", "2f022004", "2f020301", "2f02200b", "2f02200d", "2f022003",
+            "2f02200b", "2f022010", "160100", "0c00",
+        )
         private const val SCAN_TIMEOUT_MS = 30_000L
         private const val MTU_SIZE = 512
     }
@@ -333,7 +346,7 @@ class OnewheelConnector(
 
         override fun onCharacteristicWrite(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             Log.d(TAG, "Char write: ${characteristic.uuid} status=$status")
-            if (characteristic.uuid == OW_UART_WRITE && status == BluetoothGatt.GATT_SUCCESS && isPolaris) {
+            if (characteristic.uuid == OW_UART_WRITE && status == BluetoothGatt.GATT_SUCCESS && isPolaris && characteristic.value?.contentEquals(tokenBytes) == true) {
                 // Token write succeeded — poke a read to verify unlock
                 mainHandler.postDelayed({
                     val batt = g.getService(OW_SERVICE)?.getCharacteristic(OW_BATTERY_PCT)
@@ -412,10 +425,14 @@ class OnewheelConnector(
             }
             if (ok) {
                 lastStatus = "Token written (attempt $attempt)"
-                scheduleKeepAlive()
-                // Wait 800ms after successful write for board to process, then subscribe
+                // 0.3.1: token → (800 ms) → setup burst (20 frames @150 ms) → subscribe → 6 s re-poke
                 val svc = g.getService(OW_SERVICE) ?: return
-                mainHandler.postDelayed({ subscribeToTelemetry(g, svc) }, 800L)
+                mainHandler.postDelayed({
+                    sendPostUnlockSetup(g, uartWrite) {
+                        subscribeToTelemetry(g, svc)
+                        scheduleKeepAlive()
+                    }
+                }, 800L)
             } else {
                 lastStatus = "Token write failed after $maxAttempts attempts"
                 Log.e(TAG, lastStatus)
@@ -423,6 +440,20 @@ class OnewheelConnector(
         } catch (e: SecurityException) {
             Log.e(TAG, "writeChar perm: ${e.message}")
         }
+    }
+
+    /** Replay FM's post-unlock setup burst, one frame per SETUP_FRAME_SPACING_MS, then run [onDone]. */
+    @SuppressLint("MissingPermission")
+    private fun sendPostUnlockSetup(g: BluetoothGatt, uartWrite: BluetoothGattCharacteristic, onDone: () -> Unit) {
+        fun step(i: Int) {
+            if (i >= POST_UNLOCK_SETUP.size) { lastStatus = "Setup burst sent"; Log.i(TAG, "Post-unlock setup burst sent (${POST_UNLOCK_SETUP.size} frames)"); onDone(); return }
+            uartWrite.value = hexToBytes(POST_UNLOCK_SETUP[i])
+            uartWrite.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            try { if (!g.writeCharacteristic(uartWrite)) Log.w(TAG, "setup frame ${POST_UNLOCK_SETUP[i]} rejected") }
+            catch (e: SecurityException) { Log.w(TAG, "setup write perm: ${e.message}") }
+            mainHandler.postDelayed({ step(i + 1) }, SETUP_FRAME_SPACING_MS)
+        }
+        step(0)
     }
 
     private fun scheduleKeepAlive() {

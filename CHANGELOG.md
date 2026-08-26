@@ -22,6 +22,12 @@ Karoo 2/3 Android extension for veloVigil. Captures biometric telemetry (Polar H
 | Karoo built-in GPS | `karoo-ext` SDK | Speed, distance, elevation |
 | Karoo built-in power meter | `karoo-ext` SDK | If paired externally |
 
+## 0.3.1 — 2026-08-26 (pre-release: Onewheel on the Karoo, the Player Zero recipe)
+
+- **Onewheel GT-S connector brought up to Player Zero's verified recipe** (`player-zero-app/captures/PROTOCOL.md`, SOLVED 2026-08-22): token write → FM's 20-frame post-unlock setup burst once (150 ms spacing) → notification subscriptions → re-poke the token every **6 s** (was 15 s, which let the board soft-relock and stream zeros). Battery-verify read now fires only after the token write, not after every setup frame.
+- Board data fields unchanged: `board_battery`, `motor_temp`, `safety_headroom`, `board_amps`, `board_speed`; `board` section in every telemetry point (battery, motor temp, headroom, amps, rpm, pitch, roll). Board name + token are Settings fields; nothing board-specific is in the APK.
+- Untested on a Karoo until Rob's board is next to it; same cert as 0.2.4.
+
 ## 0.3.0 — 2026-08-25 (pre-release: the DH view's data)
 
 - **Per-feature events.** `GForceProcessor` records a `jump` event on every landing: hang time, landing g (peak filtered g in the 300 ms after touchdown), lateral g; and a `crash` event when the 4 g/200 ms detector fires. `TelemetryBuffer` drains them into each payload as `events:[{type,t_offset_ms,hang_ms,landing_g,lateral_g,g,duration_ms}]`.
