@@ -18,6 +18,8 @@ Current release: **v0.2.4** (2026-08-25). Beta, invite-only.
 ## What it does today
 
 - **Heart rate** from a Polar H10, shown on the Karoo as the sensor "veloVigil HR"
+   - If **veloVigil HR** is not in the scan list, back out and scan again — the first scan after an install or reboot often does not show extension sensors; the second does.
+   - Within ~30 s of pairing, swipe down from the top of the Karoo screen and tap **PAIR & CONNECT** on the Bluetooth pairing request. Once; the Karoo remembers it. Unanswered, the H10 link drops every ~37 s and HR reads 0.
 - **HRV** — RMSSD, SDNN, pNN50, mean RR — computed on-device from H10 RR intervals
 - **G-force** — filtered accelerometer (10-sample / 50 ms RMS window at 200 Hz); peak and average g, airborne time. A crash detector (>4 g sustained >200 ms) runs on-device and sets a flag; **no alert or upload is wired to it yet**
 - **Karoo data** — speed, power, cadence, distance from the Karoo's own streams
