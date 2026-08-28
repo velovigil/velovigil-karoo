@@ -38,7 +38,10 @@ Current release: **v0.2.4** (2026-08-25). Beta, invite-only.
 Full guide with pictures: [velovigil.com/start](https://velovigil.com/start/)
 
 1. Get an invite code (sign up at [velovigil.com/start](https://velovigil.com/start/); codes go out by email)
-2. Download `velovigil-v0.2.4.apk` from [Releases](https://github.com/velovigil/velovigil-karoo/releases/latest) and sideload it (USB → Karoo's `Download` folder → open the file → Install; `adb install` also works)
+2. Download `velovigil-v0.2.4.apk` from [Releases](https://github.com/velovigil/velovigil-karoo/releases/latest) and sideload it:
+   - **Karoo 2:** USB → the Karoo's `Download` folder → open the file → Install.
+   - **Karoo 3:** the `Download` → open → Install path is blocked, and Hammerhead's Companion-app sideload currently errors ([#4](https://github.com/velovigil/velovigil-karoo/issues/4)). Use **`adb install velovigil-v0.2.4.apk`** from a computer with USB debugging on (Settings → System → Developer options → USB debugging). A one-tap store install is in progress with Hammerhead.
+   - `adb install` works on both.
 3. Open the veloVigil extension → **Settings**. **Allow the permission it asks for** (Karoo 2: Location; Karoo 3: Nearby devices + Location). Without it the H10 scan never runs and every ride records HR 0 — this was the April beta failure, fixed in 0.2.4
 4. Paste your invite code → **Register with Invite Code**. Your **Rider ID** appears on that screen; you'll use it for your dashboard
 5. If your H10 is paired to the Karoo directly, remove it from Settings → Sensors first. Then Settings → Sensors → Scan → pair **veloVigil HR**
