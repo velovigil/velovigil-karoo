@@ -212,3 +212,15 @@ cd /root/projects/velovigil-karoo
 - Crash detection logic implemented but untested on actual ride
 
 Updated: 2026-03-28
+
+## Installing on Karoo 3 — the sideload reality (2026-08-28, from beta tester report + issue #4)
+
+The install path differs by Karoo model, and it is NOT obvious. Ours were written against a Karoo 2 (what we own) and silently failed on Karoo 3 (what most testers have).
+
+- **Karoo 2** allows the simple path: APK in the `Download` folder → open the file → Install.
+- **Karoo 3 blocks that.** The APK lands in `Download` but "further steps are not possible" — the Karoo 3 will not install an unverified APK by opening it, and there is **no on-device file browser** to locate a browser-downloaded APK and install it manually.
+- **The Hammerhead Companion / store install FAILS for unverified extensions.** A tester saw **"DOWNLOAD FAILED — 0.3.2 (9)"** with a **"This app has not been verified by Hammerhead"** banner. This is **not a broken release**: `releases/latest/download/manifest.json` resolves and its `latestApkUrl` (`velovigil-v0.3.2.apk`) downloads cleanly from a normal client (302→302→200, `application/vnd.android.package-archive`, 6.8 MB). The failure is Karoo/Companion-side — gated on the extension not being **Hammerhead-verified** yet (and/or the Karoo download client not following the signed release-asset redirect chain).
+- **The path that works today on both Karoos: `adb install velovigil-vX.Y.Z.apk`** from a computer with USB debugging on. It bypasses the store/redirect entirely.
+- **Real fix:** complete Hammerhead verification / store registration so the Companion one-tap install works. Until then, Karoo 3 = adb only.
+
+**Lesson:** validate install instructions on the *same model the recipient has*, and keep one version number as the source of truth (`docs/BETA_INVITE.md`) — a stale APK version in the docs shipped testers the pre-fix build.

@@ -35,3 +35,7 @@ If you use Claude Code, just say:
 > Install veloVigil on my Karoo
 
 Claude Code will handle the rest if it has the CLAUDE.md context from this repo.
+
+## Karoo 3 note
+
+The GUI sideload (download → open → Install) **does not work on Karoo 3**, and the one-tap Hammerhead store install is not live until the extension is Hammerhead-verified. Use **`adb install`** (above) — it works on both Karoos. Details: [README](README.md#install) · [issue #4](https://github.com/velovigil/velovigil-karoo/issues/4) · `KAROO_DEV_REFERENCE.md`.
