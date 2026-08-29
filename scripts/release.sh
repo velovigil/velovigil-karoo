@@ -7,7 +7,7 @@
 # Needs:
 #   ANDROID_HOME (default /opt/android-sdk), build-tools with zipalign + apksigner
 #   GITHUB_TOKEN with read:packages for the karoo-ext GPR dependency (or `gh auth token`)
-#   VELOVIGIL_KEYSTORE_PASS  (or ~/.claude/.secrets/velovigil-keystore-pass)
+#   VELOVIGIL_KEYSTORE_PASS  (or ~/.claude/.secrets/velovigil-keystore-pass-v3)
 #
 # Usage: scripts/release.sh            → app/build/outputs/apk/release/velovigil-v<version>.apk
 #        OUT_DIR=/some/dir scripts/release.sh   also copies the APK there
@@ -19,10 +19,10 @@ export GITHUB_USER="${GITHUB_USER:-NorthwoodsSentinel}"
 export GITHUB_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
 [ -n "$GITHUB_TOKEN" ] || { echo "no GITHUB_TOKEN (read:packages) — karoo-ext dependency will 401" >&2; exit 2; }
 
-KS="velovigil-release-v2.keystore"
+KS="velovigil-release-v3.keystore"
 ALIAS="velovigil"
-PASS="${VELOVIGIL_KEYSTORE_PASS:-$(cat "$HOME/.claude/.secrets/velovigil-keystore-pass" 2>/dev/null || true)}"
-[ -n "$PASS" ] || { echo "no keystore password (VELOVIGIL_KEYSTORE_PASS or ~/.claude/.secrets/velovigil-keystore-pass)" >&2; exit 2; }
+PASS="${VELOVIGIL_KEYSTORE_PASS:-$(cat "$HOME/.claude/.secrets/velovigil-keystore-pass-v3" 2>/dev/null || true)}"
+[ -n "$PASS" ] || { echo "no keystore password (VELOVIGIL_KEYSTORE_PASS or ~/.claude/.secrets/velovigil-keystore-pass-v3)" >&2; exit 2; }
 
 VERSION=$(grep -E 'versionName = "' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
 BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
