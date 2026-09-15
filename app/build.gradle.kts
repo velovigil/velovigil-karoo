@@ -11,8 +11,8 @@ android {
         applicationId = "com.velovigil.karoo"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.3.3"
+        versionCode = 11
+        versionName = "0.3.4"
     }
 
     buildTypes {
