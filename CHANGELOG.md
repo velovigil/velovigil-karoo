@@ -1,5 +1,9 @@
 # velovigil-karoo CHANGELOG
 
+## 0.3.4 (unreleased) — Karoo 3 BLE scan fix
+
+- **Fix (Karoo 3 / API 31+): H10 never found, HR 0, no pairing request.** `BLUETOOTH_SCAN` now declares `usesPermissionFlags="neverForLocation"`. Without it, Android 12+ silently returns empty scan results unless `ACCESS_FINE_LOCATION` is granted AND device Location is on; the app only ever requested `BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT` on API ≥31 (`SettingsActivity.requiredPermissions()`), so the gate was never satisfied. Two Karoo 3 testers (Stijn, Martin) reported the exact symptom; Stijn's 8-test sequence (09-03) ruled out strap contention. Karoo 2 path (API ≤30) unchanged.
+
 Karoo 2/3 Android extension for veloVigil. Captures biometric telemetry (Polar H10 HRV, GPS, power, cadence), board data (Onewheel Polaris), runs on-device signal processing, posts to velovigil-fleet.
 
 ## Working reference
