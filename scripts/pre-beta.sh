@@ -88,7 +88,7 @@ else
 fi
 
 header "5. Site install page version alignment"
-SITE_INSTALL="/root/projects/velovigil-site/public/install/index.html"
+SITE_INSTALL="${SITE_INSTALL:-$(dirname "$0")/../../velovigil-site/public/install/index.html}"
 if [[ -f "$SITE_INSTALL" ]]; then
   SITE_APK=$(grep -oE "velovigil-v[0-9]+\.[0-9]+\.[0-9]+\.apk" "$SITE_INSTALL" | head -1 | sed 's/velovigil-v\(.*\)\.apk/\1/')
   if [[ "$SITE_APK" == "$GRADLE_VERSION" ]]; then
