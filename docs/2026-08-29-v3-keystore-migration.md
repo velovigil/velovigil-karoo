@@ -20,8 +20,8 @@ Backs up the app's files dir, uninstalls, installs the v3-signed APK, pushes the
 ## Run it when you're ready (not before a ride you care about)
 
 ```
-cd /root/projects/velovigil-karoo
-adb devices    # get the serial: KAROO20ALC061506370 or KAROO20ALC061503273
+cd velovigil-karoo
+adb devices    # get the serial (a Karoo 2 serial looks like KAROO20ALC0615xxxxx)
 scripts/migrate-to-v3.sh <serial> <velovigil-v3 apk> <player-zero-v3 apk>
 ```
 

@@ -21,10 +21,12 @@
 #
 # USAGE (explicit serial REQUIRED — this never picks a device for you):
 #   scripts/migrate-to-v3.sh <device-serial> <velovigil-apk> [player-zero-apk]
-# Serials:  adb devices   (Rob's Karoo 2s: KAROO20ALC061506370, KAROO20ALC061503273)
+# Serials:  adb devices   (a Karoo 2 serial looks like KAROO20ALC0615xxxxx)
 set -euo pipefail
 
-ADB="${ADB:-/mnt/c/platform-tools/adb.exe}"
+# kintsugi: one machine's road was paved into everyone's map —
+#   now the path is asked for, not assumed.
+ADB="${ADB:-adb}"   # WSL: ADB=/mnt/c/platform-tools/adb.exe
 SERIAL="${1:?usage: migrate-to-v3.sh <device-serial> <velovigil-apk> [player-zero-apk]}"
 VV_APK="${2:?path to v3-signed veloVigil APK required}"
 PZ_APK="${3:-}"
